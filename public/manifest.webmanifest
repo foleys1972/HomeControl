@@ -1,0 +1,20 @@
+{
+  "name": "Home Control",
+  "short_name": "Home",
+  "description": "Lights, heating, TVs and the doorbell in one place.",
+  "start_url": "/#/home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#12100e",
+  "theme_color": "#12100e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Wall tablet", "url": "/#/wall", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "TV Guide", "url": "/#/guide", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

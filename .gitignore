@@ -1,0 +1,4 @@
+data/
+deploy/server.env
+node_modules/
+*.tgz

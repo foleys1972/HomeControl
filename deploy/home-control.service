@@ -1,0 +1,30 @@
+# /etc/systemd/system/home-control.service — installed by deploy/install.sh (@NODE@ is replaced with the node path)
+[Unit]
+Description=Home Control dashboard (local-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homectl
+Group=homectl
+WorkingDirectory=/opt/home-control
+Environment=HOST=127.0.0.1
+Environment=PORT=8790
+Environment=HOME_CONTROL_DATA=/var/lib/home-control
+ExecStart=@NODE@ /opt/home-control/src/server.js
+Restart=always
+RestartSec=5
+
+# Hardening: read-only app, writes only to its data directory
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/home-control
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

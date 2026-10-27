@@ -1,0 +1,13 @@
+{
+  "name": "home-control",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Local-only home dashboard: Hue lights, Sky Q, network health (and later heating, TVs, scenes).",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check public/app.js"
+  }
+}

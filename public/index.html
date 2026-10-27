@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12100e" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f2ec" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Home">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Home Control</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="auth" class="auth" hidden>
+    <form id="auth-form" class="auth-card">
+      <img src="/icon.svg" alt="" width="56" height="56">
+      <h1 id="auth-title">Home Control</h1>
+      <p id="auth-hint" class="muted"></p>
+      <input id="auth-password" type="password" autocomplete="current-password" placeholder="Password" required minlength="8">
+      <input id="auth-confirm" type="password" autocomplete="new-password" placeholder="Repeat password" hidden>
+      <button type="submit" class="btn primary block" id="auth-submit">Log in</button>
+      <p id="auth-error" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="shell" class="shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="#/home"><img src="/icon.svg" alt="" width="30" height="30"><span>Home Control</span></a>
+      <nav class="nav" id="nav"></nav>
+      <div class="box-picker" id="box-picker"></div>
+      <div class="sidebar-foot">
+        <div class="clock" id="clock"></div>
+        <a class="net-chip" id="net-chip" href="#/network"></a>
+        <button class="net-chip theme-btn" id="theme-btn" type="button"></button>
+      </div>
+    </aside>
+
+    <header class="mobile-top">
+      <span class="mobile-title" id="mobile-title"></span>
+      <div class="mobile-actions">
+        <button class="box-chip" id="box-chip" type="button" aria-label="Choose which Sky box to control"></button>
+        <button class="icon-btn" type="button" id="mobile-theme"></button>
+        <a class="icon-btn" href="#/network" aria-label="Network" id="mobile-network"></a>
+        <a class="icon-btn" href="#/routines" aria-label="Routines" id="mobile-routines"></a>
+        <a class="icon-btn" href="#/settings" aria-label="Settings" id="mobile-settings"></a>
+      </div>
+    </header>
+
+    <main class="main" id="main"></main>
+
+    <nav class="tabbar" id="tabbar"></nav>
+  </div>
+
+  <dialog id="sheet" class="sheet"></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

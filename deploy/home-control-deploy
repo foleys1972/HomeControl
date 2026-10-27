@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# /usr/local/sbin/home-control-deploy — root helper the deploy user may run via sudo without a password
+# (see /etc/sudoers.d/home-control). It only installs packages uploaded by push.sh and reports status.
+#   home-control-deploy --check | --status | --logs [N] | /tmp/home-control-deploy-<n>.tgz
+set -euo pipefail
+
+APP=/opt/home-control
+DATA=/var/lib/home-control
+SITE=/etc/nginx/sites-available/home-control.conf
+
+status() {
+  echo "service: $(systemctl is-active home-control || true)"
+  echo "app:     $(curl -s -o /dev/null -w 'HTTP %{http_code}' http://127.0.0.1:8790/api/session || echo 'no answer')"
+  local lan; lan="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')"
+  echo "lan:     $(curl -s -o /dev/null -w 'HTTP %{http_code}' "http://$lan/api/session" || echo 'no answer') (nginx http://$lan)"
+  echo "version: $(cat "$APP/VERSION" 2>/dev/null || echo unknown)"
+  echo "memory:  $(systemctl show home-control -p MemoryCurrent --value | awk '{printf "%.0f MB", $1/1048576}')"
+}
+
+case "${1:-}" in
+  --check) exit 0 ;;
+  --status) status; exit 0 ;;
+  --logs) exec journalctl -u home-control -n "${2:-80}" --no-pager ;;
+esac
+
+PKG="${1:-}"
+[[ "$PKG" =~ ^/tmp/home-control-deploy-[0-9]+\.tgz$ ]] || { echo "refusing: not a home-control package path" >&2; exit 2; }
+[ -f "$PKG" ] && [ ! -L "$PKG" ] || { echo "refusing: package missing" >&2; exit 2; }
+if [ -n "${SUDO_USER:-}" ] && [ "$(stat -c %U "$PKG")" != "$SUDO_USER" ]; then echo "refusing: package not owned by $SUDO_USER" >&2; exit 2; fi
+
+NEW="$APP.new"
+rm -rf "$NEW"
+mkdir -p "$NEW"
+tar -xzf "$PKG" -C "$NEW" --no-same-owner
+rm -f "$PKG"
+[ -f "$NEW/src/server.js" ] || { echo "refusing: package has no src/server.js" >&2; rm -rf "$NEW"; exit 2; }
+chown -R root:root "$NEW"
+chmod -R go-w "$NEW"
+
+# Only app code is swapped here (it runs as the unprivileged homectl user). The systemd unit, nginx site and
+# this helper are deliberately NOT taken from the package: changing those needs install.sh and a sudo password.
+if ! cmp -s "$NEW/deploy/home-control.service" /usr/local/share/home-control/home-control.service.src 2>/dev/null \
+   || ! cmp -s "$NEW/deploy/nginx-home-control.conf" "$SITE" \
+   || ! cmp -s "$NEW/deploy/home-control-deploy" /usr/local/sbin/home-control-deploy; then
+  echo "note: service/nginx/helper files changed in this package — run 'bash deploy/push.sh --first-install' to apply them"
+fi
+
+rm -rf "$APP.prev"
+[ -d "$APP" ] && mv "$APP" "$APP.prev"
+mv "$NEW" "$APP"
+install -d -o homectl -g homectl -m 700 "$DATA"
+systemctl restart home-control
+sleep 3
+status
