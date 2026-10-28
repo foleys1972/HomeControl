@@ -127,6 +127,8 @@ async function loadLayout(s) {
 // --- status -------------------------------------------------------------------------------------
 let status = { at: 0, online: false };
 let recheck = null; // timer for the follow-up poll after a change
+// Hive's API keeps reporting old values for a few seconds after a change: check again once it has caught up
+function recheckSoon() { clearTimeout(recheck); recheck = setTimeout(() => poll().catch(() => {}), 6000); }
 
 async function pollCloud() {
   try {
@@ -224,8 +226,7 @@ export async function set(id, { target, mode }) {
       if (target != null) t.target = Math.round(Number(target) * 2) / 2;
       if (mode != null) t.mode = mode;
     }
-    clearTimeout(recheck);
-    recheck = setTimeout(() => poll().catch(() => {}), 6000);
+    recheckSoon();
     return summary();
   }
   const writes = [];
@@ -260,7 +261,13 @@ export async function setSwitch(id, on) {
 
 /** Boost: manual mode at `target` for `minutes`, then put mode and temperature back as they were. */
 export async function boost(id, minutes, target) {
-  if (cloud.isSignedIn()) { await cloud.boostHeating(id, minutes, target); await poll(); return summary(); }
+  if (cloud.isSignedIn()) {
+    await cloud.boostHeating(id, minutes, target);
+    const t = (status.thermostats ?? []).find((x) => x.id === String(id));
+    if (t) Object.assign(t, { mode: 'manual', boosting: true, boostMins: Math.round(Number(minutes)), ...(target != null ? { target: Math.round(Number(target) * 2) / 2 } : {}) });
+    recheckSoon();
+    return summary();
+  }
   const mins = Math.max(15, Math.min(360, Number(minutes) || 60));
   if (!status.online) await poll();
   const t = (status.thermostats ?? []).find((x) => x.id === String(id)) ?? status.thermostats?.[0];
@@ -325,6 +332,8 @@ export async function setHotWater(id, mode) {
 }
 export async function boostHotWater(id, minutes) {
   await cloud.boostHotWater(id, minutes);
-  await poll();
+  const w = (status.hotwater ?? []).find((x) => x.id === String(id));
+  if (w) Object.assign(w, { boosting: true, on: true, boostMins: Math.round(Number(minutes)) });
+  recheckSoon();
   return summary();
 }

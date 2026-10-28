@@ -222,14 +222,14 @@ export async function status() {
     id: p.id, type: p.type, name: p.state?.name ?? 'Heating',
     current: p.props?.temperature ?? null, target: p.state?.target ?? null,
     mode: MODE[p.state?.mode] ?? String(p.state?.mode ?? '').toLowerCase(), heating: Boolean(p.props?.working),
-    boostMins: p.state?.mode === 'BOOST' ? (p.state?.boost ?? null) : null,
+    boostMins: p.state?.mode === 'BOOST' ? (p.props?.boost ?? p.state?.boost ?? null) : null, // props.boost = minutes left
     online: p.props?.online !== false, min: 5, max: 32, step: 0.5, modes: ['schedule', 'manual', 'off'],
   }));
   const hotwater = products.list.filter((p) => p.type === 'hotwater').map((p) => ({
     id: p.id, name: p.state?.name ?? 'Hot water',
     mode: MODE[p.state?.mode] ?? String(p.state?.mode ?? '').toLowerCase(),
     on: p.props?.working ?? p.state?.status === 'ON',
-    boostMins: p.state?.mode === 'BOOST' ? (p.state?.boost ?? null) : null,
+    boostMins: p.state?.mode === 'BOOST' ? (p.props?.boost ?? p.state?.boost ?? null) : null, // props.boost = minutes left
   }));
   return { heating, hotwater };
 }
@@ -258,7 +258,7 @@ export async function setHeating(id, { target, mode }) {
 
 export async function boostHeating(id, minutes, target) {
   const p = product(id);
-  const mins = Math.max(30, Math.min(360, Math.round((Number(minutes) || 60) / 30) * 30));
+  const mins = Math.max(15, Math.min(360, Math.round((Number(minutes) || 60) / 5) * 5));
   const t = Math.round((Number(target) || Math.max(21, (p.state?.target ?? 20) + 1)) * 2) / 2;
   await api('POST', `/nodes/${p.type}/${id}`, { mode: 'BOOST', boost: mins, target: t });
 }
@@ -279,6 +279,6 @@ export async function setHotWater(id, mode) {
 
 export async function boostHotWater(id, minutes) {
   const p = product(id);
-  const mins = Math.max(30, Math.min(240, Math.round((Number(minutes) || 60) / 30) * 30));
+  const mins = Math.max(15, Math.min(240, Math.round((Number(minutes) || 60) / 5) * 5));
   await api('POST', `/nodes/hotwater/${p.id}`, { mode: 'BOOST', boost: mins });
 }

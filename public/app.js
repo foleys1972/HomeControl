@@ -1324,7 +1324,12 @@ function thermostatCard(t, boost) {
     const value = Number(Math.min(t.max, Math.max(t.min, Math.round((cur + delta) * 2) / 2)).toFixed(1)); // half-degree steps
     clearTimeout(pendingTarget.get(t.id)?.timer);
     const entry = { value, sentAt: null };
-    entry.timer = setTimeout(async () => { entry.sentAt = Date.now(); await hivePost('set', { id: t.id, target: value }, `${t.name} set to ${fmtTemp(value)}`); }, 900);
+    // during a boost, change the boost's temperature and keep its time left (a plain set could end the boost)
+    entry.timer = setTimeout(async () => {
+      entry.sentAt = Date.now();
+      if (boosting) await hivePost('boost', { id: t.id, minutes: minsLeft || 30, target: value }, `Boosting to ${fmtTemp(value)}`);
+      else await hivePost('set', { id: t.id, target: value }, `${t.name} set to ${fmtTemp(value)}`);
+    }, 900);
     pendingTarget.set(t.id, entry);
     rerender();
   };
@@ -1348,15 +1353,19 @@ function thermostatCard(t, boost) {
       ring,
       h('div', { class: 'dial-centre' },
         h('b', { class: 'num' }, fmt(t.current)),
-        h('span', {}, off ? 'Heating is off' : `${state.key === 'heating' ? 'Heating to' : 'Set to'} ${fmt(shown)}`)),
+        h('span', {}, off ? 'Heating is off' : `${boosting ? 'Boosting to' : state.key === 'heating' ? 'Heating to' : 'Set to'} ${fmt(shown)}`)),
       h('button', { class: 'dial-btn minus', 'aria-label': `Lower to ${fmt((shown ?? 20) - 0.5)}`, disabled: off, onclick: () => nudge(-0.5) }, icon('minus')),
       h('button', { class: 'dial-btn plus', 'aria-label': `Raise to ${fmt((shown ?? 20) + 0.5)}`, disabled: off, onclick: () => nudge(0.5) }, icon('plus'))),
     h('div', { class: 'seg thermo-modes', role: 'group', 'aria-label': 'Heating mode' },
       ['schedule', 'manual', 'off'].filter((m) => t.modes.includes(m)).map((m) =>
         h('button', { 'aria-pressed': String(t.mode === m), onclick: () => hivePost('set', { id: t.id, mode: m }, `${t.name}: ${MODE_LABEL[m]}`) }, MODE_LABEL[m]))),
+    // during a boost: what's happening and Cancel; − / + change its temperature, Extend adds time
+    boosting ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, minsLeft ? `Boosting to ${fmt(t.target)}, ${minsLeft} min left` : `Boosting to ${fmt(t.target)}`),
+      h('button', { class: 'btn', onclick: () => hivePost('cancel-boost', { id: t.id }, 'Boost cancelled') }, 'Cancel')) : null,
     boosting
-      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost to ${fmt(t.target)} for ${minsLeft} more min`),
-        h('button', { class: 'btn', onclick: () => hivePost('cancel-boost', { id: t.id }, 'Boost cancelled') }, 'Cancel'))
+      ? h('div', { class: 'boost-row two' }, h('span', {}, 'Extend'),
+        [[30, '+30 min'], [60, '+1 hour']].map(([mins, label]) =>
+          h('button', { class: 'btn', onclick: () => hivePost('boost', { id: t.id, minutes: Math.min(360, (minsLeft || 0) + mins), target: shown }, `Boost extended by ${label.slice(1)}`) }, label)))
       : h('div', { class: 'boost-row' }, h('span', {}, 'Boost'),
         [[30, '30 min'], [60, '1 hour'], [120, '2 hours']].map(([mins, label]) =>
           h('button', { class: 'btn', onclick: () => hivePost('boost', { id: t.id, minutes: mins, target: Math.max(21, Math.min(t.max, (t.target ?? 20) + 1)) }, `Boost for ${label}`) }, label))));
@@ -1372,9 +1381,11 @@ function hotWaterCard(w) {
       h('span', { class: `heat-pill ${state.key}` }, state.key === 'heating' ? icon('flame') : null, state.label)),
     h('div', { class: 'seg thermo-modes', role: 'group', 'aria-label': 'Hot water mode' },
       ['schedule', 'on', 'off'].map((m) => h('button', { 'aria-pressed': String(current === m), onclick: () => hivePost('hotwater', { id: w.id, mode: m }, `${w.name}: ${label[m]}`) }, label[m]))),
+    w.boosting ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, w.boostMins ? `Boosting, ${w.boostMins} min left` : 'Boosting'),
+      h('button', { class: 'btn', onclick: () => hivePost('hotwater', { id: w.id, mode: 'schedule' }, 'Hot water boost cancelled') }, 'Cancel')) : null,
     w.boosting
-      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost on${w.boostMins ? ` for ${w.boostMins} more min` : ''}`),
-        h('button', { class: 'btn', onclick: () => hivePost('hotwater', { id: w.id, mode: 'schedule' }, 'Hot water boost cancelled') }, 'Cancel'))
+      ? h('div', { class: 'boost-row two' }, h('span', {}, 'Extend'),
+        [[30, '+30 min'], [60, '+1 hour']].map(([mins, l]) => h('button', { class: 'btn', onclick: () => hivePost('hotwater-boost', { id: w.id, minutes: Math.min(240, (w.boostMins || 0) + mins) }, `Hot water boost extended by ${l.slice(1)}`) }, l)))
       : h('div', { class: 'boost-row two' }, h('span', {}, 'Boost'),
         [[30, '30 min'], [60, '1 hour']].map(([mins, l]) => h('button', { class: 'btn', onclick: () => hivePost('hotwater-boost', { id: w.id, minutes: mins }, `Hot water boost for ${l}`) }, l))));
 }
