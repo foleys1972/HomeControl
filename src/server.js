@@ -17,6 +17,7 @@ import * as hive from './hive.js';
 import * as smarttv from './smarttv.js';
 import * as ring from './ring.js';
 import * as routines from './routines.js';
+import * as cameras from './cameras.js';
 
 const DEFAULT_FAVOURITE_NUMBERS = ['101', '102', '103', '104', '105', '106', '107', '108', '109', '110', '301', '401', '501'];
 
@@ -99,6 +100,7 @@ function publicSettings() {
     sky: c.sky,
     android: c.android,
     smarttv: c.smarttv ?? [],
+    cameras: cameras.settings(),
     switches: c.switches,
     cisco: { passwordSet: Boolean(c.cisco.password), enableSet: Boolean(c.cisco.enable) },
     pingTargets: c.pingTargets,
@@ -165,7 +167,7 @@ async function api(req, res, url) {
   // --- authenticated -------------------------------------------------------------------------
   if (route === 'GET /api/state') {
     const [lights, tv] = await Promise.all([hue.summary().catch((e) => ({ error: e.message })), sky.summary().catch(() => [])]);
-    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
+    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
   }
   if (route === 'POST /api/hue/pair') return send(res, 200, await hue.pair().catch((e) => ({ ok: false, error: `Bridge not answering (${e.name})` })));
 
@@ -315,6 +317,19 @@ async function api(req, res, url) {
     }
   }
 
+  // --- Cameras (RTSP via ffmpeg) -----------------------------------------------------------------------
+  if (route === 'POST /api/cameras') {
+    try { const cam = cameras.add(await readJson(req)); console.log(new Date().toISOString(), `cameras: added "${cam.name}"`); return send(res, 200, cam); }
+    catch (e) { return send(res, 400, { error: e.message }); }
+  }
+  if ((m = url.pathname.match(/^\/api\/cameras\/([\w-]+)(?:\/(snapshot|live))?$/))) {
+    try {
+      if (req.method === 'DELETE' && !m[2]) return send(res, 200, cameras.remove(m[1]));
+      if (req.method === 'GET' && m[2] === 'snapshot') return send(res, 200, await cameras.snapshot(m[1]), { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=5' });
+      if (req.method === 'GET' && m[2] === 'live') return cameras.watch(m[1], res, (headers) => res.writeHead(200, { ...SECURITY_HEADERS, ...headers }));
+    } catch (e) { return send(res, e.status ?? 502, { error: e.message }); }
+  }
+
   // --- Routines ------------------------------------------------------------------------------------------
   if (route === 'GET /api/routines') return send(res, 200, { routines: routines.summary() });
   if (route === 'POST /api/routines') {
@@ -356,7 +371,11 @@ async function api(req, res, url) {
   }
 
   if (route === 'GET /api/settings') return send(res, 200, publicSettings());
-  if (route === 'POST /api/settings') { applySettings(await readJson(req)); return send(res, 200, publicSettings()); }
+  if (route === 'POST /api/settings') {
+    const body = await readJson(req);
+    try { applySettings(body); cameras.update(body.cameras ?? []); } catch (e) { return send(res, 400, { error: e.message }); }
+    return send(res, 200, publicSettings());
+  }
 
   return send(res, 404, { error: 'Not found' });
 }

@@ -718,6 +718,7 @@ function renderWall(main) {
         } }, icon('expand')),
         h('a', { class: 'icon-btn', href: '#/home', 'aria-label': 'Leave wall mode', title: 'Leave wall mode' }, icon('x')))),
     h('div', { class: 'wall-grid' },
+      ...(s.cameras ?? []).map(cameraCard),
       doorbell ? h('div', { class: 'card wall-door' },
         h('div', { class: 'cam-shot' }, h('img', { src: `/api/ring/snapshot/${doorbell.id}?v=${slot}`, alt: `Latest picture from ${doorbell.name}`, onerror: (e) => e.currentTarget.remove() }),
           h('span', { class: 'cam-ico' }, icon('bell'))),
@@ -736,6 +737,54 @@ function renderWall(main) {
         nextRoutines.map((r) => h('div', { class: 'wall-tv-row' }, icon('clock'),
           h('div', { class: 'tv-text' }, h('b', {}, r.name), h('small', {}, routineNext(r).replace('Next: ', '')))))) : null)));
   keepAwake(true);
+}
+
+// --- home-network cameras (RTSP, via the server's ffmpeg) ------------------------------------------------
+const camSnap = (id) => `/api/cameras/${id}/snapshot?v=${Math.floor(Date.now() / 10_000)}`;
+function cameraLive(cam) {
+  const sheet = $('#sheet');
+  const img = h('img', { class: 'cam-live', src: `/api/cameras/${cam.id}/live`, alt: `${cam.name}, live` });
+  const status = h('small', { class: 'muted' }, 'Connecting… (a few seconds)');
+  img.addEventListener('load', () => { status.textContent = 'Live · 5 frames a second'; }, { once: true });
+  img.addEventListener('error', () => { status.textContent = 'Camera not answering'; });
+  const close = () => sheet.close();
+  sheet.replaceChildren(h('div', { class: 'sheet-card cam-sheet' },
+    h('div', { class: 'cam-shot' }, img, h('button', { class: 'sheet-close', 'aria-label': 'Close', onclick: close }, icon('x'))),
+    h('div', { class: 'sheet-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), status))));
+  // closing the sheet drops the connection, which stops the server's live feed
+  sheet.addEventListener('close', () => { img.src = ''; img.remove(); }, { once: true });
+  sheet.showModal();
+}
+function cameraCard(cam) {
+  return h('div', { class: 'card cam-card' },
+    h('button', { class: 'cam-shot', 'aria-label': `Watch ${cam.name} live`, onclick: () => cameraLive(cam) },
+      h('img', { src: camSnap(cam.id), alt: `Latest picture from ${cam.name}`, loading: 'lazy', onerror: (e) => e.currentTarget.remove() }),
+      h('span', { class: 'cam-ico' }, icon('play', 'fill'))),
+    h('div', { class: 'cam-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), h('small', {}, cam.live ? 'Being watched now' : 'Tap the picture to watch live'))));
+}
+function camerasSection(list) {
+  if (!list?.length) return [];
+  return [h('div', { class: 'section-title' }, h('h2', {}, 'Cameras'), h('a', { href: '#/settings' }, 'Settings →')), h('div', { class: 'cam-grid' }, list.map(cameraCard))];
+}
+function camerasSettingsCard(list) {
+  const msg = h('p', { class: 'error', role: 'alert' });
+  const name = h('input', { placeholder: 'Dog camera', 'aria-label': 'Camera name' });
+  const url = h('input', { placeholder: 'rtsp://<camera-ip>:554/…', 'aria-label': 'RTSP address' });
+  return h('div', { class: 'card' }, h('h3', {}, 'Cameras'),
+    h('p', { class: 'desc' }, 'Home-network cameras with an RTSP stream. Use the camera\'s small sub-stream if it has one; the server turns it into pictures and a live view.'),
+    list.map((c) => h('div', { class: 'fields dev-row' },
+      h('label', { class: 'field' }, 'Name', h('input', { name: `camera.${c.id}.name`, value: c.name })),
+      h('label', { class: 'field' }, 'RTSP address', h('input', { name: `camera.${c.id}.url`, value: c.url })),
+      h('button', { type: 'button', class: 'btn ghost remove', 'aria-label': `Remove ${c.name}`, onclick: async () => {
+        if (!(await confirmSheet(`Remove ${c.name}?`, 'It disappears from Home Control. Nothing on the camera changes.', 'Remove'))) return;
+        try { await api('DELETE', `/api/cameras/${c.id}`); toast(`${c.name} removed`); await refresh(); rerender(); } catch (e) { toast(e.message); }
+      } }, icon('x'), 'Remove'))),
+    h('div', { class: 'fields dev-row' }, h('label', { class: 'field' }, 'Name', name), h('label', { class: 'field' }, 'RTSP address', url),
+      h('button', { type: 'button', class: 'btn', onclick: async () => {
+        msg.textContent = '';
+        try { await api('POST', '/api/cameras', { name: name.value, url: url.value }); toast(`${name.value} added`); await refresh(); rerender(); } catch (e) { msg.textContent = e.message; }
+      } }, icon('plus'), 'Add camera')),
+    msg);
 }
 
 async function renderHome(main) {
@@ -777,6 +826,7 @@ async function renderHome(main) {
       })),
     ] : []),
     ...ringSection(s?.ring),
+    ...camerasSection(s?.cameras),
     h('div', { class: 'section-title' }, h('h2', {}, 'On now on your favourites'), h('a', { href: '#/guide' }, 'Full guide →')),
     rail,
     h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
@@ -1513,6 +1563,7 @@ async function renderSettings(main) {
         h('label', { class: 'field' }, `Name · ${KIND_LABEL[d.kind] ?? 'Android'}`, h('input', { name: `android.${d.id}.name`, value: d.name })),
         h('label', { class: 'field' }, 'IP address', h('input', { name: `android.${d.id}.ip`, value: d.ip, inputmode: 'decimal' })),
         removeButton('android', d)))),
+    camerasSettingsCard(s.cameras ?? []),
     (s.smarttv ?? []).length ? h('div', { class: 'card' }, h('h3', {}, 'Other smart TVs'), h('p', { class: 'desc' }, 'No remote over the network: volume, mute and YouTube / Netflix only.'),
       s.smarttv.map((d) => h('div', { class: 'fields' },
         h('label', { class: 'field' }, 'Name', h('input', { name: `smarttv.${d.id}.name`, value: d.name })),
@@ -1542,6 +1593,7 @@ async function renderSettings(main) {
       hue: { ip: f['hue.ip'].value.trim() },
       sky: s.sky.map((b) => ({ id: b.id, name: f[`sky.${b.id}.name`].value, ip: f[`sky.${b.id}.ip`].value.trim() })),
       android: (s.android ?? []).map((d) => ({ id: d.id, name: f[`android.${d.id}.name`].value, ip: f[`android.${d.id}.ip`].value.trim() })),
+      cameras: (s.cameras ?? []).map((c) => ({ id: c.id, name: f[`camera.${c.id}.name`].value, url: f[`camera.${c.id}.url`].value.trim() })),
       smarttv: (s.smarttv ?? []).map((d) => ({ id: d.id, name: f[`smarttv.${d.id}.name`].value, ip: f[`smarttv.${d.id}.ip`].value.trim() })),
       switches: s.switches.map((sw) => ({ id: sw.id, ip: f[`switch.${sw.id}.ip`].value.trim() })),
       cisco: { password: f['cisco.password'].value, enable: f['cisco.enable'].value },

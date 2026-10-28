@@ -524,6 +524,9 @@ select { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); bord
 .cam-body { padding: 12px 14px 14px; display: grid; gap: 10px; }
 .cam-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .ring-events { margin-top: 12px; }
+button.cam-shot { display: block; width: 100%; padding: 0; border: 0; cursor: pointer; }
+.cam-sheet .cam-shot { aspect-ratio: auto; min-height: 200px; }
+.cam-live { width: 100%; display: block; }
 
 /* ---------- routines ---------- */
 .routine-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }

@@ -6,6 +6,7 @@ Local-only home dashboard, plain JavaScript with no dependencies:
 - **Android TV, NVIDIA Shield and Fire TV** over ADB: status, remote keys, app launching, Wake-on-LAN.
 - **Network-only smart TVs** (e.g. Vestel-built Sharp Aquos): volume, mute, YouTube / Netflix over DIAL.
 - **Philips Hue** lights, **Hive** heating and hot water (Hive account), **Ring** doorbells and cameras (Ring account).
+- **Home-network IP cameras** with an RTSP stream: snapshots and a tap-to-watch live view (needs `ffmpeg` on the server).
 - **Network health**: router/internet reachability, Cisco switch status, event log.
 - **Routines** run by the server: daily ("porch light on at 20:00") or one-off; from the TV Guide, "Set up for this
   show" dims the lights, boosts the heating and switches the Sky box just before a programme starts.
