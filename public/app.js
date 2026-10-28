@@ -511,7 +511,11 @@ function routineWhen(r) {
 function routineAction(a) {
   if (a.type === 'lights') return `${a.name || 'Lights'}: ${a.on ? (a.bri != null ? `dim to ${a.bri}%` : 'on') : 'off'}`;
   if (a.type === 'heating') return `Heating ${a.target}°${a.minutes ? ` for ${mins(a.minutes * 60)}, then back to schedule` : ''}`;
-  return `TV: ${a.name || 'channel'} on ${(S.state?.tv ?? []).find((b) => b.id === a.box)?.name ?? a.box}`;
+  const legacy = a.box != null && a.device == null; // saved before TV actions: name was the channel
+  const tv = (legacy ? null : a.name) || (S.state?.tv ?? []).find((b) => b.id === (a.device ?? a.box))?.name || a.device || a.box;
+  const what = a.do ?? 'channel';
+  if (what === 'channel') return `${tv}: switch to ${(legacy ? a.name : a.channel) || 'channel'}`;
+  return `${tv}: ${{ on: 'turn on', off: 'turn off', volume: `volume ${a.level}`, mute: 'mute', unmute: 'unmute', app: `open ${a.app}` }[what]}`;
 }
 function routineNext(r) {
   if (!r.enabled) return r.trigger.type === 'once' && r.lastRun ? 'Done' : 'Off';
@@ -562,6 +566,17 @@ function routineEditor(r = null, preset = null) {
   const rooms = S.state?.lights?.paired ? S.state.lights.rooms ?? [] : [];
   const thermostats = S.state?.hive?.thermostats ?? [];
   const boxes = S.state?.tv ?? [];
+  // every TV a routine can control, with what it can do
+  const TV_DO = {
+    sky: [['on', 'Turn on'], ['off', 'Standby'], ['channel', 'Change channel']],
+    android: [['on', 'Wake'], ['off', 'Sleep']],
+    smarttv: [['volume', 'Set volume'], ['mute', 'Mute'], ['unmute', 'Unmute'], ['app', 'Open app']],
+  };
+  const tvs = [
+    ...boxes.map((b) => ({ kind: 'sky', id: b.id, name: b.name })),
+    ...(S.state?.android ?? []).map((d) => ({ kind: 'android', id: d.id, name: d.name })),
+    ...(S.state?.smarttv ?? []).map((d) => ({ kind: 'smarttv', id: d.id, name: d.name })),
+  ];
   const msg = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { value: draft.name, placeholder: 'Porch light on', 'aria-label': 'Routine name' });
 
@@ -621,12 +636,38 @@ function routineEditor(r = null, preset = null) {
       row = h('div', { class: 'routine-row' }, h('div', { class: 'row-ico' }, icon('flame')),
         h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Heating', which), h('label', { class: 'field small' }, 'Temperature °C', temp), h('label', { class: 'field' }, 'How long', dur)), remove);
     } else {
-      const box = h('select', { 'aria-label': 'Sky box' }, boxes.map((b) => h('option', { value: b.id, selected: a.box === b.id }, b.name)));
+      const kind0 = a.kind ?? 'sky';
+      const id0 = a.device ?? a.box;
+      const group = (k, label) => h('optgroup', { label }, tvs.filter((t) => t.kind === k).map((t) => h('option', { value: `${t.kind}:${t.id}`, selected: t.kind === kind0 && t.id === id0 }, t.name)));
+      const dev = h('select', { 'aria-label': 'TV' }, group('sky', 'Sky boxes'), group('android', 'Android TV, Shield, Fire TV'), group('smarttv', 'Other TVs'));
+      const what = h('select', { 'aria-label': 'Do' });
       const chans = [...S.channels].sort((x, y) => (y.fav - x.fav) || (Number(x.number) - Number(y.number)));
       const ch = h('select', { 'aria-label': 'Channel' }, chans.map((c) => h('option', { value: c.sid, selected: a.sid === c.sid }, `${c.number} ${c.name}`)));
-      read = () => ({ type: 'tv', box: box.value, sid: ch.value, name: ch.selectedOptions[0]?.textContent ?? '' });
+      const level = h('input', { type: 'number', min: 0, max: 100, value: a.level ?? 20, 'aria-label': 'Volume' });
+      const app = h('select', { 'aria-label': 'App' }, ['YouTube', 'Netflix'].map((x) => h('option', { value: x, selected: a.app === x }, x)));
+      const chWrap = h('label', { class: 'field' }, 'Channel', ch);
+      const levelWrap = h('label', { class: 'field small' }, 'Volume (0–100)', level);
+      const appWrap = h('label', { class: 'field' }, 'App', app);
+      const kindNow = () => dev.value.split(':')[0];
+      const fill = (keep) => {
+        const opts = TV_DO[kindNow()] ?? [];
+        what.replaceChildren(...opts.map(([v, l]) => h('option', { value: v, selected: v === keep }, l)));
+        sync();
+      };
+      const sync = () => { chWrap.hidden = what.value !== 'channel'; levelWrap.hidden = what.value !== 'volume'; appWrap.hidden = what.value !== 'app'; };
+      dev.addEventListener('change', () => fill(what.value));
+      what.addEventListener('change', sync);
+      fill(a.do ?? (a.sid ? 'channel' : TV_DO[kind0]?.[0]?.[0]));
+      read = () => {
+        const [kind, device] = dev.value.split(':');
+        const out = { type: 'tv', kind, device, do: what.value, name: dev.selectedOptions[0]?.textContent ?? '' };
+        if (what.value === 'channel') Object.assign(out, { sid: ch.value, channel: ch.selectedOptions[0]?.textContent ?? '' });
+        if (what.value === 'volume') out.level = Number(level.value);
+        if (what.value === 'app') out.app = app.value;
+        return out;
+      };
       row = h('div', { class: 'routine-row' }, h('div', { class: 'row-ico' }, icon('tv')),
-        h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Sky box', box), h('label', { class: 'field' }, 'Channel', ch)), remove);
+        h('div', { class: 'fields' }, h('label', { class: 'field' }, 'TV', dev), h('label', { class: 'field' }, 'Do', what), chWrap, levelWrap, appWrap), remove);
     }
     if (read) readers.push(read);
     rows.append(row);
@@ -657,7 +698,7 @@ function routineEditor(r = null, preset = null) {
     h('div', { class: 'row add-actions' },
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'lights', on: true }) }, icon('bulb'), 'Lights'),
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'heating', target: 21 }) }, icon('flame'), 'Heating'),
-      boxes.length ? h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'tv' }) }, icon('tv'), 'TV channel') : null),
+      tvs.length ? h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'tv' }) }, icon('tv'), 'TV') : null),
     msg,
     h('div', { class: 'actions' }, save, h('button', { type: 'button', class: 'btn', onclick: () => sheet.close() }, 'Cancel')))));
   sheet.showModal();
@@ -670,7 +711,7 @@ function showRoutine(sid, ev) {
   const box = (S.state?.tv ?? []).find((b) => b.id === activeBoxId()) ?? (S.state?.tv ?? [])[0];
   const room = S.state?.lights?.paired ? (S.state.lights.rooms ?? []).find((x) => x.type === 'Room') : null;
   const actions = [];
-  if (box) actions.push({ type: 'tv', box: box.id, sid, name: `${ch?.number ?? ''} ${ch?.name ?? ''}`.trim() });
+  if (box) actions.push({ type: 'tv', kind: 'sky', device: box.id, do: 'channel', sid, name: box.name, channel: `${ch?.number ?? ''} ${ch?.name ?? ''}`.trim() });
   if (room) actions.push({ type: 'lights', kind: 'group', id: room.id, name: room.name, on: true, bri: 30 });
   actions.push({ type: 'heating', target: 21, minutes: Math.min(360, Math.max(30, Math.ceil(ev.d / 1800) * 30)) });
   routineEditor(null, { name: `Ready for ${ev.t}`.slice(0, 60), enabled: true, trigger: { type: 'once', at: (ev.st - 60) * 1000 }, actions, programme: { sid, title: ev.t, st: ev.st } });

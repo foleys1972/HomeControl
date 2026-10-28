@@ -6,6 +6,8 @@ import * as store from './store.js';
 import * as hue from './hue.js';
 import * as hive from './hive.js';
 import * as sky from './skyq.js';
+import * as android from './android.js';
+import * as smarttv from './smarttv.js';
 
 const TZ = 'Europe/London';
 const CATCH_UP_MS = 10 * 60_000; // a routine missed by a restart still runs if we're back within 10 minutes
@@ -28,6 +30,32 @@ const list = () => store.get().routines ?? [];
 // --- validation -----------------------------------------------------------------------------------------
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// What each kind of TV can do in a routine. Saved routines from before (Sky box + channel) still load.
+const TV_DO = { sky: ['on', 'off', 'channel'], android: ['on', 'off'], smarttv: ['volume', 'mute', 'unmute', 'app'] };
+function cleanTv(a) {
+  const kind = a.kind ?? 'sky';
+  const device = String(a.device ?? a.box ?? '');
+  const what = a.do ?? (a.sid ? 'channel' : 'on');
+  if (!TV_DO[kind] || !/^[\w-]+$/.test(device)) throw new Error('Pick a TV');
+  if (!TV_DO[kind].includes(what)) throw new Error('That TV can\'t do that');
+  const legacy = a.box != null && a.device == null; // old format: name held the channel, not the TV
+  const out = { type: 'tv', kind, device, do: what, name: legacy ? '' : String(a.name ?? '').slice(0, 60) };
+  if (what === 'channel') {
+    if (!/^\d+$/.test(String(a.sid))) throw new Error('Pick a channel');
+    Object.assign(out, { sid: String(a.sid), channel: String((legacy ? a.name : a.channel) ?? '').slice(0, 60) });
+  }
+  if (what === 'volume') {
+    const level = Math.round(Number(a.level));
+    if (!(level >= 0 && level <= 100)) throw new Error('Volume must be 0–100');
+    out.level = level;
+  }
+  if (what === 'app') {
+    if (!smarttv.APPS.includes(a.app)) throw new Error('Pick an app');
+    out.app = a.app;
+  }
+  return out;
+}
+
 function cleanAction(a) {
   if (a?.type === 'lights') {
     if (!['group', 'light'].includes(a.kind) || !/^\d+$/.test(String(a.id))) throw new Error('Pick a room or light');
@@ -42,10 +70,7 @@ function cleanAction(a) {
     if (a.minutes != null) out.minutes = Math.max(30, Math.min(360, Math.round(Number(a.minutes) / 30) * 30));
     return out;
   }
-  if (a?.type === 'tv') {
-    if (!/^[\w-]+$/.test(String(a.box)) || !/^\d+$/.test(String(a.sid))) throw new Error('Pick a Sky box and channel');
-    return { type: 'tv', box: String(a.box), sid: String(a.sid), name: String(a.name ?? '').slice(0, 60) };
-  }
+  if (a?.type === 'tv') return cleanTv(a);
   throw new Error('Unknown action');
 }
 
@@ -116,11 +141,29 @@ async function runAction(a) {
     const id = a.id ?? hive.summary().thermostats?.[0]?.id;
     return a.minutes ? hive.boost(id, a.minutes, a.target) : hive.set(id, { mode: 'manual', target: a.target });
   }
-  if (a.type === 'tv') return sky.watch(a.box, a.sid);
+  if (a.type === 'tv') {
+    const kind = a.kind ?? 'sky';
+    const id = a.device ?? a.box;
+    const what = a.do ?? 'channel';
+    if (kind === 'android') return android.key(id, what === 'on' ? 'wake' : 'sleep');
+    if (kind === 'smarttv') {
+      if (what === 'volume') return smarttv.volume(id, { level: a.level });
+      if (what === 'app') return smarttv.app(id, a.app);
+      return smarttv.mute(id, what === 'mute');
+    }
+    if (what === 'channel') return sky.watch(id, a.sid); // wakes the box first if it's in standby
+    // the Sky power key toggles, so only press it when the box isn't already where we want it
+    const box = (await sky.summary()).find((b) => b.id === id);
+    if (!box?.online) throw new Error('Sky box not answering');
+    if (what === 'on' && box.standby) return sky.sendKey(id, 'sky');
+    if (what === 'off' && !box.standby) return sky.sendKey(id, 'power');
+    return null;
+  }
 }
 
 const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`} ${a.on ? (a.bri != null ? `${a.bri}%` : 'on') : 'off'}`
-  : a.type === 'heating' ? `heating ${a.target}°${a.minutes ? ` for ${a.minutes} min` : ''}` : `TV → ${a.name || a.sid}`);
+  : a.type === 'heating' ? `heating ${a.target}°${a.minutes ? ` for ${a.minutes} min` : ''}`
+  : `${a.name || a.device || a.box}: ${a.do === 'channel' || !a.do ? `channel ${a.channel || a.sid}` : a.do === 'volume' ? `volume ${a.level}` : a.do === 'app' ? `open ${a.app}` : a.do}`);
 
 export async function run(id, why = 'manual') {
   const r = list().find((x) => x.id === id);
