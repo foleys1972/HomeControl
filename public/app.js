@@ -39,6 +39,7 @@ const ICONS = {
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
   plus: 'M12 5v14M5 12h14', minus: 'M5 12h14',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  camera: 'M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
   siren: 'M7 18v-6a5 5 0 0 1 10 0v6M5 21h14v-3H5zM12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4',
   vol: 'M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13', mute: 'M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6',
@@ -136,7 +137,8 @@ const PAGES = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'guide', label: 'TV Guide', icon: 'guide' },
   { id: 'remote', label: 'Remote', icon: 'remote' },
-  { id: 'apps', label: 'Apps', icon: 'apps' },
+  { id: 'cameras', label: 'Cameras', icon: 'camera' },
+  { id: 'apps', label: 'Apps', icon: 'apps', desktopOnly: true }, // phones: linked from Home and Remote
   { id: 'heating', label: 'Heating', icon: 'flame' },
   { id: 'lights', label: 'Lights', icon: 'bulb' },
   { id: 'routines', label: 'Routines', icon: 'clock', desktopOnly: true }, // phones: clock icon in the top bar
@@ -430,15 +432,16 @@ function ringCamCard(d) {
           if (await confirmSheet(`Sound the siren on ${d.name}?`, 'It is loud and keeps going until you stop it here or in the Ring app, or it times out.', 'Sound siren')) ringPost('siren', { id: d.id, on: true }, 'Siren on');
         } }, icon('siren'), d.siren ? 'Stop siren' : 'Siren'))));
 }
-function ringSection(r) {
-  if (!r?.signedIn) return [];
-  const cams = (r.devices ?? []).filter((d) => d.type !== 'chime');
+function ringSection(r, homeCams = [], { title = true } = {}) {
+  const signedIn = Boolean(r?.signedIn);
+  if (!signedIn && !homeCams.length) return [];
+  const cams = signedIn ? (r.devices ?? []).filter((d) => d.type !== 'chime') : [];
   return [
-    h('div', { class: 'section-title' }, h('h2', {}, 'Doorbell & cameras'), h('a', { href: '#/settings' }, 'Ring →')),
-    r.error ? h('div', { class: 'card notice' }, h('p', { class: 'muted' }, r.error)) : null,
-    cams.length ? h('div', { class: 'cam-grid' }, cams.map(ringCamCard))
+    title ? h('div', { class: 'section-title' }, h('h2', {}, 'Doorbell & cameras'), h('a', { href: '#/cameras' }, 'All cameras →')) : null,
+    signedIn && r.error ? h('div', { class: 'card notice' }, h('p', { class: 'muted' }, r.error)) : null,
+    cams.length || homeCams.length ? h('div', { class: 'cam-grid' }, cams.map(ringCamCard), homeCams.map(cameraCard))
       : h('div', { class: 'card muted' }, r.at ? 'No doorbells or cameras on this Ring account.' : 'Loading Ring devices…'),
-    (r.events ?? []).length ? h('ul', { class: 'timeline ring-events' }, r.events.map((e) => h('li', {},
+    signedIn && (r.events ?? []).length ? h('ul', { class: 'timeline ring-events' }, r.events.map((e) => h('li', {},
       h('span', { class: `dot ${e.kind === 'ding' ? 'live' : e.kind === 'motion' ? 'warn' : ''}` }),
       h('time', {}, ringWhen(e.at)),
       h('span', {}, `${RING_EVENT[e.kind] ?? e.kind} · ${e.device}`)))) : null,
@@ -750,10 +753,27 @@ function cameraLive(cam) {
   const close = () => sheet.close();
   sheet.replaceChildren(h('div', { class: 'sheet-card cam-sheet' },
     h('div', { class: 'cam-shot' }, img, h('button', { class: 'sheet-close', 'aria-label': 'Close', onclick: close }, icon('x'))),
-    h('div', { class: 'sheet-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), status))));
-  // closing the sheet drops the connection, which stops the server's live feed
-  sheet.addEventListener('close', () => { img.src = ''; img.remove(); }, { once: true });
+    h('div', { class: 'sheet-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), status), cam.ptz ? ptzPad(cam) : null)));
+  // closing the sheet drops the connection, which stops the server's live feed (and any movement)
+  sheet.addEventListener('close', () => { img.src = ''; img.remove(); if (cam.ptz) api('POST', `/api/cameras/${cam.id}/ptz`, { stop: true }).catch(() => {}); }, { once: true });
   sheet.showModal();
+}
+// Hold an arrow to move; the app repeats the move while held and the server stops the camera if that stops.
+function ptzPad(cam) {
+  let timer = null;
+  const send = (body) => api('POST', `/api/cameras/${cam.id}/ptz`, body).catch((e) => toast(e.message));
+  const hold = (pan, tilt) => {
+    const start = (e) => { e.preventDefault(); if (timer) return; send({ pan, tilt }); timer = setInterval(() => send({ pan, tilt }), 700); };
+    const end = () => { if (!timer) return; clearInterval(timer); timer = null; send({ stop: true }); };
+    return { onpointerdown: start, onpointerup: end, onpointerleave: end, onpointercancel: end, oncontextmenu: (e) => e.preventDefault() };
+  };
+  return h('div', { class: 'cam-ptz' }, h('div', { class: 'dpad' },
+    h('button', { class: 'up', 'aria-label': 'Tilt up', ...hold(0, 0.5) }, icon('up')),
+    h('button', { class: 'left', 'aria-label': 'Pan left', ...hold(-0.5, 0) }, icon('left')),
+    h('button', { class: 'ok', 'aria-label': 'Stop', onclick: () => send({ stop: true }) }, icon('stop')),
+    h('button', { class: 'right', 'aria-label': 'Pan right', ...hold(0.5, 0) }, icon('right')),
+    h('button', { class: 'down', 'aria-label': 'Tilt down', ...hold(0, -0.5) }, icon('down'))),
+    h('small', { class: 'muted' }, 'Hold an arrow to move the camera'));
 }
 function cameraCard(cam) {
   return h('div', { class: 'card cam-card' },
@@ -762,9 +782,12 @@ function cameraCard(cam) {
       h('span', { class: 'cam-ico' }, icon('play', 'fill'))),
     h('div', { class: 'cam-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), h('small', {}, cam.live ? 'Being watched now' : 'Tap the picture to watch live'))));
 }
-function camerasSection(list) {
-  if (!list?.length) return [];
-  return [h('div', { class: 'section-title' }, h('h2', {}, 'Cameras'), h('a', { href: '#/settings' }, 'Settings →')), h('div', { class: 'cam-grid' }, list.map(cameraCard))];
+function renderCameras(main) {
+  const s = S.state ?? {};
+  const body = ringSection(s.ring, s.cameras ?? [], { title: false });
+  main.replaceChildren(pageHead('Cameras', 'Ring and home cameras — tap a picture to watch live'),
+    ...(body.length ? body : [h('div', { class: 'card' }, h('h3', {}, 'No cameras yet'),
+      h('p', { class: 'muted' }, 'Sign in to Ring, or add a home-network camera (RTSP), in Settings.'), h('a', { class: 'btn primary', href: '#/settings' }, 'Open Settings'))]));
 }
 function camerasSettingsCard(list) {
   const msg = h('p', { class: 'error', role: 'alert' });
@@ -825,8 +848,7 @@ async function renderHome(main) {
             h('button', { class: 'icon-btn', 'aria-label': 'Apps', title: 'Apps', onclick: go('apps') }, icon('apps'))));
       })),
     ] : []),
-    ...ringSection(s?.ring),
-    ...camerasSection(s?.cameras),
+    ...ringSection(s?.ring, s?.cameras ?? []),
     h('div', { class: 'section-title' }, h('h2', {}, 'On now on your favourites'), h('a', { href: '#/guide' }, 'Full guide →')),
     rail,
     h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
@@ -1264,6 +1286,27 @@ async function hivePost(action, body, okMsg) {
 const MODE_LABEL = { off: 'Off', schedule: 'Schedule', manual: 'Manual' };
 const pendingTarget = new Map(); // thermostat id -> { value, timer }
 
+// The heating card is drawn as the Hive thermostat itself: a 270° ring filled up to the target, with a marker
+// for the room temperature, the room temperature in the middle and − / + in the gap at the bottom.
+const DIAL = { lo: 10, hi: 28, r: 82, c: 100 };
+const svgEl = (tag, attrs = {}, ...kids) => {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.append(...kids);
+  return el;
+};
+const dialAngle = (temp) => 135 + 270 * Math.max(0, Math.min(1, (temp - DIAL.lo) / (DIAL.hi - DIAL.lo)));
+const dialPoint = (deg) => [DIAL.c + DIAL.r * Math.cos((deg * Math.PI) / 180), DIAL.c + DIAL.r * Math.sin((deg * Math.PI) / 180)];
+function dialArc(from, to) {
+  const [x0, y0] = dialPoint(from);
+  const [x1, y1] = dialPoint(Math.max(from + 0.01, to));
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${DIAL.r} ${DIAL.r} 0 ${to - from > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+function heatState(t) {
+  if (t.mode === 'off') return { key: 'off', label: 'Off' };
+  return t.heating ? { key: 'heating', label: 'Heating now' } : { key: 'idle', label: 'Idle' };
+}
+
 function thermostatCard(t, boost) {
   const shown = pendingTarget.get(t.id)?.value ?? t.target;
   const nudge = (delta) => {
@@ -1277,24 +1320,33 @@ function thermostatCard(t, boost) {
   // Hive account: Hive runs the boost itself (t.boosting / t.boostMins); HomeKit: our own timed boost
   const boosting = t.boosting ?? Boolean(boost && boost.thermostat === t.id);
   const minsLeft = t.boostMins ?? (boosting && boost ? Math.max(0, Math.round((boost.until - Date.now()) / 60_000)) : 0);
-  return h('div', { class: `card thermo ${t.heating ? 'heating' : ''}` },
+  const state = heatState(t);
+  const off = t.mode === 'off';
+  const fmt = (v) => (v == null ? '–' : `${Number(v).toFixed(1).replace(/\.0$/, '')}°`);
+
+  const ring = svgEl('svg', { class: 'dial-ring', viewBox: '0 0 200 200', 'aria-hidden': 'true' },
+    svgEl('path', { class: 'dial-track', d: dialArc(135, 405) }),
+    off || shown == null ? '' : svgEl('path', { class: 'dial-fill', d: dialArc(135, dialAngle(shown)) }),
+    t.current == null ? '' : (() => { const [x, y] = dialPoint(dialAngle(t.current)); return svgEl('circle', { class: 'dial-now', cx: x.toFixed(2), cy: y.toFixed(2), r: 6 }); })());
+
+  return h('div', { class: `card thermo ${state.key}` },
     h('div', { class: 'thermo-head' },
-      h('div', {}, h('h3', {}, t.name), h('span', { class: 'muted' }, t.heating ? 'Heating now' : t.mode === 'off' ? 'Heating off' : 'Idle — up to temperature')),
-      h('span', { class: `badge ${t.heating ? 'live' : ''}` }, t.heating ? 'On' : 'Idle')),
-    h('div', { class: 'thermo-main' },
-      h('div', { class: 'thermo-now' }, h('small', {}, 'Now'), h('b', { class: 'num' }, t.current != null ? `${t.current.toFixed(1)}°` : '–')),
-      h('div', { class: 'thermo-target' },
-        h('small', {}, 'Target'),
-        h('div', { class: 'thermo-dial' },
-          h('button', { class: 'icon-btn big', 'aria-label': 'Lower', disabled: t.mode === 'off', onclick: () => nudge(-0.5) }, icon('minus')),
-          h('b', { class: 'num' }, shown != null ? `${Number(shown).toFixed(1)}°` : '–'),
-          h('button', { class: 'icon-btn big', 'aria-label': 'Raise', disabled: t.mode === 'off', onclick: () => nudge(0.5) }, icon('plus'))))),
+      h('h3', {}, t.name),
+      h('span', { class: `heat-pill ${state.key}` }, state.key === 'heating' ? icon('flame') : null, state.label)),
+    h('div', { class: 'dial', role: 'group', 'aria-label': `${t.name}: ${fmt(t.current)} now, set to ${fmt(shown)}` },
+      ring,
+      h('div', { class: 'dial-centre' },
+        h('b', { class: 'num' }, fmt(t.current)),
+        h('span', {}, off ? 'Heating is off' : `${state.key === 'heating' ? 'Heating to' : 'Set to'} ${fmt(shown)}`)),
+      h('button', { class: 'dial-btn minus', 'aria-label': `Lower to ${fmt((shown ?? 20) - 0.5)}`, disabled: off, onclick: () => nudge(-0.5) }, icon('minus')),
+      h('button', { class: 'dial-btn plus', 'aria-label': `Raise to ${fmt((shown ?? 20) + 0.5)}`, disabled: off, onclick: () => nudge(0.5) }, icon('plus'))),
     h('div', { class: 'seg thermo-modes', role: 'group', 'aria-label': 'Heating mode' },
       ['schedule', 'manual', 'off'].filter((m) => t.modes.includes(m)).map((m) =>
         h('button', { 'aria-pressed': String(t.mode === m), onclick: () => hivePost('set', { id: t.id, mode: m }, `${t.name}: ${MODE_LABEL[m]}`) }, MODE_LABEL[m]))),
     boosting
-      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost on — ${minsLeft} min left`), h('button', { class: 'btn', onclick: () => hivePost('cancel-boost', { id: t.id }, 'Boost cancelled') }, 'Cancel boost'))
-      : h('div', { class: 'boost' }, h('span', { class: 'muted' }, 'Boost'),
+      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost to ${fmt(t.target)} for ${minsLeft} more min`),
+        h('button', { class: 'btn', onclick: () => hivePost('cancel-boost', { id: t.id }, 'Boost cancelled') }, 'Cancel'))
+      : h('div', { class: 'boost-row' }, h('span', {}, 'Boost'),
         [[30, '30 min'], [60, '1 hour'], [120, '2 hours']].map(([mins, label]) =>
           h('button', { class: 'btn', onclick: () => hivePost('boost', { id: t.id, minutes: mins, target: Math.max(21, Math.min(t.max, (t.target ?? 20) + 1)) }, `Boost for ${label}`) }, label))));
 }
@@ -1302,21 +1354,23 @@ function thermostatCard(t, boost) {
 function hotWaterCard(w) {
   const label = { schedule: 'Schedule', on: 'On', off: 'Off' };
   const current = w.boosting ? 'boost' : w.mode === 'manual' ? 'on' : w.mode;
-  return h('div', { class: `card thermo ${w.on ? 'heating' : ''}` },
+  const state = w.on ? { key: 'heating', label: 'Heating water' } : { key: w.mode === 'off' ? 'off' : 'idle', label: w.mode === 'off' ? 'Off' : 'Not heating' };
+  return h('div', { class: `card thermo water ${state.key}` },
     h('div', { class: 'thermo-head' },
-      h('div', {}, h('h3', {}, w.name), h('span', { class: 'muted' }, w.on ? 'Heating water now' : 'Not heating')),
-      h('span', { class: `badge ${w.on ? 'live' : ''}` }, w.on ? 'On' : 'Off')),
+      h('h3', {}, w.name),
+      h('span', { class: `heat-pill ${state.key}` }, state.key === 'heating' ? icon('flame') : null, state.label)),
     h('div', { class: 'seg thermo-modes', role: 'group', 'aria-label': 'Hot water mode' },
       ['schedule', 'on', 'off'].map((m) => h('button', { 'aria-pressed': String(current === m), onclick: () => hivePost('hotwater', { id: w.id, mode: m }, `${w.name}: ${label[m]}`) }, label[m]))),
     w.boosting
-      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost on${w.boostMins ? ` — ${w.boostMins} min left` : ''}`), h('button', { class: 'btn', onclick: () => hivePost('hotwater', { id: w.id, mode: 'schedule' }, 'Hot water boost cancelled') }, 'Cancel boost'))
-      : h('div', { class: 'boost' }, h('span', { class: 'muted' }, 'Boost'),
+      ? h('div', { class: 'boost-on' }, icon('flame'), h('span', {}, `Boost on${w.boostMins ? ` for ${w.boostMins} more min` : ''}`),
+        h('button', { class: 'btn', onclick: () => hivePost('hotwater', { id: w.id, mode: 'schedule' }, 'Hot water boost cancelled') }, 'Cancel'))
+      : h('div', { class: 'boost-row two' }, h('span', {}, 'Boost'),
         [[30, '30 min'], [60, '1 hour']].map(([mins, l]) => h('button', { class: 'btn', onclick: () => hivePost('hotwater-boost', { id: w.id, minutes: mins }, `Hot water boost for ${l}`) }, l))));
 }
 
 function renderHeating(main) {
   const hv = S.state?.hive;
-  const head = pageHead('Heating', hv?.source === 'cloud' ? `Hive — signed in as ${hv.account ?? 'your Hive account'}` : 'Hive — controlled locally over HomeKit');
+  const head = pageHead('Heating', hv?.source === 'cloud' ? `Signed in to Hive as ${hv.account ?? 'your Hive account'}` : 'Hive hub on your network (HomeKit)');
   if (!hv?.paired) {
     main.replaceChildren(head, h('div', { class: 'card' }, h('h3', {}, 'Connect your Hive hub'),
       h('p', { class: 'muted' }, 'Go to Settings → Hive heating and sign in with your Hive account (the same email and password as the Hive app).'),
@@ -1612,8 +1666,8 @@ async function renderSettings(main) {
 }
 
 // --- render loop -----------------------------------------------------------------------------------------------------------
-const RENDER = { wall: renderWall, routines: renderRoutines, heating: renderHeating, home: renderHome, guide: renderGuide, remote: renderRemote, apps: renderApps, lights: renderLights, network: renderNetwork, settings: renderSettings };
-const LIVE = new Set(['home', 'remote', 'apps', 'heating', 'lights', 'network', 'routines', 'wall']); // pages re-rendered by polling
+const RENDER = { cameras: renderCameras, wall: renderWall, routines: renderRoutines, heating: renderHeating, home: renderHome, guide: renderGuide, remote: renderRemote, apps: renderApps, lights: renderLights, network: renderNetwork, settings: renderSettings };
+const LIVE = new Set(['home', 'remote', 'apps', 'heating', 'lights', 'network', 'routines', 'wall', 'cameras']); // pages re-rendered by polling
 
 function rerender() {
   const page = currentPage();

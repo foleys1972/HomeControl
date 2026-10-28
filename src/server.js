@@ -320,13 +320,14 @@ async function api(req, res, url) {
   // --- Cameras (RTSP via ffmpeg) -----------------------------------------------------------------------
   if (route === 'POST /api/cameras') {
     try { const cam = cameras.add(await readJson(req)); console.log(new Date().toISOString(), `cameras: added "${cam.name}"`); return send(res, 200, cam); }
-    catch (e) { return send(res, 400, { error: e.message }); }
+    catch (e) { console.error(new Date().toISOString(), `cameras: add failed: ${e.message}`); return send(res, 400, { error: e.message }); }
   }
-  if ((m = url.pathname.match(/^\/api\/cameras\/([\w-]+)(?:\/(snapshot|live))?$/))) {
+  if ((m = url.pathname.match(/^\/api\/cameras\/([\w-]+)(?:\/(snapshot|live|ptz))?$/))) {
     try {
       if (req.method === 'DELETE' && !m[2]) return send(res, 200, cameras.remove(m[1]));
       if (req.method === 'GET' && m[2] === 'snapshot') return send(res, 200, await cameras.snapshot(m[1]), { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=5' });
       if (req.method === 'GET' && m[2] === 'live') return cameras.watch(m[1], res, (headers) => res.writeHead(200, { ...SECURITY_HEADERS, ...headers }));
+      if (req.method === 'POST' && m[2] === 'ptz') return send(res, 200, await cameras.ptz(m[1], await readJson(req)));
     } catch (e) { return send(res, e.status ?? 502, { error: e.message }); }
   }
 
@@ -404,6 +405,7 @@ android.start();
 smarttv.start();
 ring.start();
 routines.start();
+cameras.start();
 hive.start();
 guide.pruneArtwork();
 setInterval(() => guide.pruneArtwork(), 86400_000).unref();

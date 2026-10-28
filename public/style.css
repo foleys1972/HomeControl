@@ -423,24 +423,10 @@ select { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); bord
 @media (max-width: 600px) { .dev-row { grid-template-columns: 1fr; } }
 
 /* ---------- heating ---------- */
-.thermo-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-.thermo { display: grid; gap: 18px; }
-.thermo.heating { border-color: rgb(255 120 60 / 40%); background: linear-gradient(160deg, rgb(255 120 60 / 10%), var(--surface) 55%); }
-.thermo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.thermo-head h3 { font-size: 1.15rem; }
-.thermo-main { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; align-items: end; }
-.thermo-now small, .thermo-target small { display: block; color: var(--muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-.thermo-now b { font-size: 3rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
-.thermo-dial { display: flex; align-items: center; gap: 12px; }
-.thermo-dial b { font-size: 2.2rem; font-weight: 700; min-width: 4.2ch; text-align: center; }
 .icon-btn.big { width: 46px; height: 46px; border-radius: 50%; }
 .icon-btn:disabled { opacity: .4; cursor: default; }
 .thermo-modes { width: 100%; }
 .thermo-modes button { flex: 1; justify-content: center; }
-.boost { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.boost-on { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgb(255 120 60 / 14%); color: #ff7a3c; font-weight: 600; flex-wrap: wrap; }
-.boost-on .btn { margin-left: auto; }
-@media (max-width: 400px) { .thermo-main { grid-template-columns: 1fr; } }
 
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
@@ -527,6 +513,11 @@ select { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); bord
 button.cam-shot { display: block; width: 100%; padding: 0; border: 0; cursor: pointer; }
 .cam-sheet .cam-shot { aspect-ratio: auto; min-height: 200px; }
 .cam-live { width: 100%; display: block; }
+.cam-ptz { display: grid; justify-items: center; gap: 8px; padding-top: 4px; }
+.cam-ptz .dpad { width: 180px; height: 180px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.cam-ptz .dpad .up, .cam-ptz .dpad .down { left: 61px; width: 58px; }
+.cam-ptz .dpad .left, .cam-ptz .dpad .right { top: 61px; height: 58px; }
+.cam-ptz .dpad .ok { left: 55px; top: 55px; width: 70px; height: 70px; }
 
 /* ---------- routines ---------- */
 .routine-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
@@ -581,5 +572,49 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .wall-tv-row svg { color: var(--accent); }
 .wall-tv-row .progress { grid-column: 2; margin: 0; }
 .wall-lights h3, .wall-tv h3, .wall-routines h3 { font-size: 1.05rem; }
+
+/* ---------- heating: the thermostat dial ---------- */
+.thermo-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
+.thermo { display: grid; gap: 16px; }
+.thermo.heating { border-color: color-mix(in srgb, var(--heat) 40%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--heat) 9%, var(--surface)), var(--surface) 60%); }
+.thermo-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.thermo-head h3 { font-size: 1.15rem; }
+.heat-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: .85rem; font-weight: 650; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.heat-pill svg { width: 16px; height: 16px; }
+.heat-pill.heating { background: color-mix(in srgb, var(--heat) 16%, transparent); color: var(--heat); }
+.heat-pill.off { color: var(--muted); }
+.heat-pill.heating svg { animation: flicker 2.4s ease-in-out infinite; transform-origin: 50% 90%; }
+@keyframes flicker { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12) rotate(-3deg); } }
+
+.dial { position: relative; width: min(100%, 264px); aspect-ratio: 1; justify-self: center; margin: -4px 0 -8px; }
+.dial-ring { width: 100%; height: 100%; display: block; overflow: visible; }
+.dial-ring path { fill: none; stroke-width: 14; stroke-linecap: round; }
+.dial-track { stroke: var(--surface-3); }
+.dial-fill { stroke: var(--accent); transition: d .3s ease; }
+.thermo.heating .dial-fill { stroke: var(--heat); }
+.dial-now { fill: var(--text); stroke: var(--surface); stroke-width: 3; }
+.dial-centre { position: absolute; inset: 22% 16% 30%; display: grid; place-content: center; text-align: center; gap: 2px; }
+.dial-centre b { font-family: var(--font-display); font-size: clamp(2.6rem, 14vw, 3.5rem); font-weight: 750; letter-spacing: -0.04em; line-height: 1; }
+.dial-centre span { color: var(--text-2); font-size: .95rem; font-weight: 550; }
+.thermo.heating .dial-centre span { color: var(--heat); }
+.thermo.off .dial-centre b { color: var(--muted); }
+.dial-btn { position: absolute; bottom: 2%; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); transition: background .15s, transform .05s; }
+.dial-btn:hover { background: var(--surface-3); }
+.dial-btn:active { transform: scale(.94); }
+.dial-btn:disabled { opacity: .35; cursor: default; }
+/* in the gap at the bottom of the ring, like the real thermostat */
+.dial-btn.minus { left: calc(50% - 60px); }
+.dial-btn.plus { right: calc(50% - 60px); }
+
+.thermo-modes { width: 100%; }
+.thermo-modes button { flex: 1; justify-content: center; min-height: 40px; }
+.boost-row { display: grid; grid-template-columns: auto repeat(3, minmax(0, 1fr)); gap: 8px; align-items: center; }
+.boost-row.two { grid-template-columns: auto repeat(2, minmax(0, 1fr)); }
+.boost-row > span { color: var(--muted); font-size: .9rem; padding-right: 4px; }
+.boost-row .btn { padding: 9px 6px; }
+.boost-on { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--heat) 14%, transparent); color: var(--heat); font-weight: 600; }
+.boost-on svg { width: 20px; height: 20px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

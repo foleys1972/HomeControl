@@ -29,6 +29,7 @@ export function add({ name, url }) {
   const cam = { id: randomUUID().slice(0, 8), name: String(name ?? '').trim().slice(0, 40), url: cleanUrl(url) };
   if (!cam.name) throw new Error('Give the camera a name');
   store.update((c) => { c.cameras = [...(c.cameras ?? []), cam]; });
+  probe(cam).catch(() => {}); // does it pan/tilt?
   return cam;
 }
 
@@ -50,7 +51,7 @@ export function remove(id) {
   return { ok: true };
 }
 
-export const summary = () => list().map((c) => ({ id: c.id, name: c.name, snapshotAt: snaps.get(c.id)?.at ?? null, live: lives.get(c.id)?.clients.size ?? 0 }));
+export const summary = () => list().map((c) => ({ id: c.id, name: c.name, snapshotAt: snaps.get(c.id)?.at ?? null, live: lives.get(c.id)?.clients.size ?? 0, ptz: Boolean(onvif.get(c.id)?.ptzProfile) }));
 export const settings = () => list().map((c) => ({ id: c.id, name: c.name, url: c.url }));
 
 // --- snapshots -----------------------------------------------------------------------------------
@@ -143,4 +144,59 @@ export function watch(id, res, sendHeaders) {
     live.clients.delete(res);
     if (!live.clients.size) live.idle = setTimeout(() => stopLive(id), LIVE_IDLE_MS);
   });
+}
+
+// --- pan / tilt over ONVIF (no login: cameras like the EYEPLUS accept it unauthenticated) ------------------
+const onvif = new Map(); // id -> { ptzProfile, at }
+const soap = async (host, path, body) => {
+  const r = await fetch(`http://${host}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+    body: `<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl" xmlns:trt="http://www.onvif.org/ver10/media/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema"><s:Body>${body}</s:Body></s:Envelope>`,
+    signal: AbortSignal.timeout(5000),
+  });
+  const text = await r.text();
+  if (!r.ok || /<[\w:]*Fault>/.test(text)) throw new Error(`Camera refused the command (HTTP ${r.status})`);
+  return text;
+};
+const hostOf = (cam) => new URL(cam.url).hostname;
+
+/** Finds the ONVIF media profile that has pan/tilt (checked once a day per camera). */
+async function probe(cam) {
+  const known = onvif.get(cam.id);
+  if (known && Date.now() - known.at < 86_400_000) return known;
+  let ptzProfile = null;
+  try {
+    const xml = await soap(hostOf(cam), '/onvif/media_service', '<trt:GetProfiles/>');
+    for (const m of xml.matchAll(/<trt:Profiles[^>]*token="([^"]+)"[\s\S]*?<\/trt:Profiles>/g)) if (/PTZConfiguration/.test(m[0])) { ptzProfile = m[1]; break; }
+  } catch {}
+  const info = { ptzProfile, at: Date.now() };
+  onvif.set(cam.id, info);
+  return info;
+}
+
+const moving = new Map(); // id -> timer that stops the camera if the app stops asking it to move
+/** pan / tilt in -1..1 (left/down negative). The app repeats the call while a button is held; if it stops
+ *  (button released, phone asleep, Wi-Fi dropped), the camera is stopped after 1.2 s. */
+export async function ptz(id, { pan = 0, tilt = 0, stop = false }) {
+  const cam = need(id);
+  const { ptzProfile } = await probe(cam);
+  if (!ptzProfile) throw new Error(`${cam.name} can't pan or tilt`);
+  clearTimeout(moving.get(id));
+  const clamp = (v) => Math.max(-1, Math.min(1, Number(v) || 0)).toFixed(2);
+  if (stop || (!Number(pan) && !Number(tilt))) {
+    moving.delete(id);
+    await soap(hostOf(cam), '/onvif/PTZ', `<tptz:Stop><tptz:ProfileToken>${ptzProfile}</tptz:ProfileToken><tptz:PanTilt>true</tptz:PanTilt><tptz:Zoom>true</tptz:Zoom></tptz:Stop>`);
+    return { ok: true, moving: false };
+  }
+  await soap(hostOf(cam), '/onvif/PTZ', `<tptz:ContinuousMove><tptz:ProfileToken>${ptzProfile}</tptz:ProfileToken><tptz:Velocity><tt:PanTilt x="${clamp(pan)}" y="${clamp(tilt)}"/></tptz:Velocity></tptz:ContinuousMove>`);
+  moving.set(id, setTimeout(() => { moving.delete(id); ptz(id, { stop: true }).catch(() => {}); }, 1200));
+  return { ok: true, moving: true };
+}
+
+/** Learn which cameras can pan/tilt, so the app knows whether to show the arrows. */
+export function start() {
+  const tick = () => { for (const c of list()) probe(c).catch(() => {}); };
+  tick();
+  setInterval(tick, 3_600_000);
 }
