@@ -1284,11 +1284,20 @@ async function hivePost(action, body, okMsg) {
 }
 
 const MODE_LABEL = { off: 'Off', schedule: 'Schedule', manual: 'Manual' };
-const pendingTarget = new Map(); // thermostat id -> { value, timer }
+// thermostat id -> { value, timer, sentAt }: what you set, shown until Hive reports it (its API lags a few seconds)
+const pendingTarget = new Map();
+const PENDING_MS = 90_000;
+function shownTarget(t) {
+  const p = pendingTarget.get(t.id);
+  if (!p) return t.target;
+  if (p.sentAt && (t.target === p.value || Date.now() - p.sentAt > PENDING_MS)) { pendingTarget.delete(t.id); return t.target; }
+  return p.value;
+}
 
 // The heating card is drawn as the Hive thermostat itself: a 270° ring filled up to the target, with a marker
 // for the room temperature, the room temperature in the middle and − / + in the gap at the bottom.
 const DIAL = { lo: 10, hi: 28, r: 82, c: 100 };
+const fmtTemp = (v) => (v == null ? '–' : `${Number(v).toFixed(1).replace(/\.0$/, '')}°`);
 const svgEl = (tag, attrs = {}, ...kids) => {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
@@ -1308,13 +1317,15 @@ function heatState(t) {
 }
 
 function thermostatCard(t, boost) {
-  const shown = pendingTarget.get(t.id)?.value ?? t.target;
+  const shown = shownTarget(t);
   const nudge = (delta) => {
-    const cur = pendingTarget.get(t.id)?.value ?? t.target ?? 20;
+    // always count from what's on screen, never from a value Hive hasn't caught up with yet
+    const cur = shownTarget(t) ?? 20;
     const value = Number(Math.min(t.max, Math.max(t.min, Math.round((cur + delta) * 2) / 2)).toFixed(1)); // half-degree steps
-    const p = pendingTarget.get(t.id);
-    clearTimeout(p?.timer);
-    pendingTarget.set(t.id, { value, timer: setTimeout(async () => { pendingTarget.delete(t.id); await hivePost('set', { id: t.id, target: value }, `${t.name} set to ${value}°`); }, 900) });
+    clearTimeout(pendingTarget.get(t.id)?.timer);
+    const entry = { value, sentAt: null };
+    entry.timer = setTimeout(async () => { entry.sentAt = Date.now(); await hivePost('set', { id: t.id, target: value }, `${t.name} set to ${fmtTemp(value)}`); }, 900);
+    pendingTarget.set(t.id, entry);
     rerender();
   };
   // Hive account: Hive runs the boost itself (t.boosting / t.boostMins); HomeKit: our own timed boost
@@ -1322,7 +1333,7 @@ function thermostatCard(t, boost) {
   const minsLeft = t.boostMins ?? (boosting && boost ? Math.max(0, Math.round((boost.until - Date.now()) / 60_000)) : 0);
   const state = heatState(t);
   const off = t.mode === 'off';
-  const fmt = (v) => (v == null ? '–' : `${Number(v).toFixed(1).replace(/\.0$/, '')}°`);
+  const fmt = fmtTemp;
 
   const ring = svgEl('svg', { class: 'dial-ring', viewBox: '0 0 200 200', 'aria-hidden': 'true' },
     svgEl('path', { class: 'dial-track', d: dialArc(135, 405) }),

@@ -126,6 +126,7 @@ async function loadLayout(s) {
 
 // --- status -------------------------------------------------------------------------------------
 let status = { at: 0, online: false };
+let recheck = null; // timer for the follow-up poll after a change
 
 async function pollCloud() {
   try {
@@ -214,7 +215,19 @@ function thermostat(id) {
 }
 
 export async function set(id, { target, mode }) {
-  if (cloud.isSignedIn()) { await cloud.setHeating(id, { target, mode }); await poll(); return summary(); }
+  if (cloud.isSignedIn()) {
+    await cloud.setHeating(id, { target, mode });
+    // Hive's API keeps reporting the old values for a few seconds after a change, so polling now would show a
+    // stale target. Record what was set, and check Hive again once it has caught up.
+    const t = (status.thermostats ?? []).find((x) => x.id === String(id));
+    if (t) {
+      if (target != null) t.target = Math.round(Number(target) * 2) / 2;
+      if (mode != null) t.mode = mode;
+    }
+    clearTimeout(recheck);
+    recheck = setTimeout(() => poll().catch(() => {}), 6000);
+    return summary();
+  }
   const writes = [];
   await withSession(async (s) => {
     if (!layout) layout = await loadLayout(s);
