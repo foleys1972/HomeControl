@@ -345,7 +345,9 @@ $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') e.ta
 
 // --- pages ------------------------------------------------------------------------------------------------
 function pageHead(title, sub, ...actions) {
-  return h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, title), sub ? h('p', {}, sub) : null), h('div', { class: 'chips' }, actions));
+  // phones already show the page name in the top bar, so the same name here is hidden there
+  const repeat = PAGES.some((p) => p.label === title);
+  return h('div', { class: 'page-head' }, h('div', {}, h('h1', { class: repeat ? 'page-name' : '' }, title), sub ? h('p', {}, sub) : null), h('div', { class: 'chips' }, actions));
 }
 
 function nowLine(b) {
@@ -530,8 +532,9 @@ async function routinesApi(method, url, body, note) {
 
 function renderRoutines(main) {
   const list = S.state?.routines ?? [];
+  // with no routines yet, the empty card has its own New routine button
   main.replaceChildren(pageHead('Routines', 'Lights, heating and TV on a schedule — run by the server, so your phone can be off',
-    h('button', { class: 'btn primary', onclick: () => routineEditor() }, icon('plus'), 'New routine')));
+    list.length ? h('button', { class: 'btn primary', onclick: () => routineEditor() }, icon('plus'), 'New routine') : null));
   if (!list.length) {
     main.append(h('div', { class: 'card' }, h('h3', {}, 'No routines yet'),
       h('p', { class: 'muted' }, 'For example: porch light on at 20:00 and off at 22:00 every day. Or open a future programme in the TV Guide and choose "Set up for this show" to dim the lights and warm the room when it starts.'),
@@ -1037,7 +1040,6 @@ function boxBanner(box) {
       h('b', { class: 'bb-title' }, n.title),
       h('span', { class: 'muted' }, n.sub)),
     h('div', { class: 'bb-actions' },
-      allDevices().length > 1 ? h('button', { class: 'btn', onclick: chooseBox }, 'Switch device') : null,
       box ? h('button', { class: `btn ${live ? '' : 'primary'}`, disabled: !box.online, onclick: () => skyKey(box.id, live ? 'power' : 'sky') }, icon('power'), live ? 'Standby' : 'Turn on') : null));
 }
 
@@ -1099,7 +1101,6 @@ function androidBanner(dev) {
       h('b', { class: 'bb-title' }, boxStatusText(dev)),
       h('span', { class: 'muted' }, [dev.model, dev.ip].filter(Boolean).join(' · '))),
     h('div', { class: 'bb-actions' },
-      allDevices().length > 1 ? h('button', { class: 'btn', onclick: chooseBox }, 'Switch device') : null,
       ok ? h('button', { class: `btn ${dev.awake ? '' : 'primary'}`, onclick: () => androidKey(dev.id, dev.awake ? 'sleep' : 'wake') }, icon('power'), dev.awake ? 'Sleep' : 'Wake') : null,
       !ok && dev.conn === 'offline' && dev.canWake ? h('button', { class: 'btn primary', onclick: () => androidWake(dev) }, icon('power'), 'Wake') : null));
 }

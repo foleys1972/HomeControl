@@ -444,6 +444,8 @@ select { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); bord
   .main { padding: 16px 16px 96px; }
   .page-head h1 { font-size: 1.4rem; }
   .page-head { margin-bottom: 14px; }
+  .page-head h1.page-name { display: none; }
+  .shell { align-content: start; } /* short pages: don't stretch the top bar to fill the screen */
   .remote-layout { grid-template-columns: 1fr; }
   .heroes { grid-template-columns: 1fr; }
   .guide-scroll { max-height: calc(100vh - 290px); }
