@@ -1,30 +1,32 @@
 /* Home Control — "living-room console": warm charcoal / warm paper, amber for action, lamps and heat. */
 :root {
-  --bg: #12100e;
-  --bg-2: #171412;
-  --surface: #1e1a17;
-  --surface-2: #27221e;
-  --surface-3: #332c27;
-  --line: rgb(255 236 214 / 7%);
-  --line-2: rgb(255 236 214 / 13%);
-  --text: #f2ece4;
-  --text-2: #c9bdb0;
-  --muted: #968b80;
-  --accent: #f0a04b;
-  --accent-2: #f5b56d;
-  --accent-soft: rgb(240 160 75 / 14%);
-  --on-accent: #241405;
+  --bg: #0e0f12;
+  --bg-2: #131418;
+  --surface: #1b1d21;
+  --surface-2: #24272c;
+  --surface-3: #30333a;
+  --line: rgb(255 255 255 / 7%);
+  --line-2: rgb(255 255 255 / 13%);
+  --text: #eff1f4;
+  --text-2: #c4c8cf;
+  --muted: #8b909a;
+  --accent: #4d7cff;
+  --accent-2: #6b92ff;
+  --accent-soft: rgb(77 124 255 / 16%);
+  --on-accent: #fff;
   --live: #ff5a5f;
-  --ok: #52c58c;
-  --warn: #f2c14e;
-  --bad: #f2756a;
-  --lamp: #f6b350;
-  --heat: #ff7a45;
+  --ok: #3ccf8e;
+  --warn: #f5c445;
+  --bad: #ff6b61;
+  --lamp: #f7b733;
+  --heat: #ff6a3d;
+  --on-lamp: #2e1f00;
+  --on-heat: #2e0c00;
   --radius: 18px;
   --radius-sm: 12px;
   --shadow: 0 12px 32px rgb(0 0 0 / 40%);
   --sidebar: 240px;
-  --logo-bg: #2a2420;
+  --logo-bg: #24272c;
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-display: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
@@ -32,54 +34,58 @@
 /* Light theme: follows the device unless the user picked one (html[data-theme]). */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f6f2ec;
-    --bg-2: #efe9e1;
-    --surface: #fffdfa;
-    --surface-2: #f5f0e9;
-    --surface-3: #e9e1d6;
-    --line: rgb(70 45 20 / 9%);
-    --line-2: rgb(70 45 20 / 16%);
-    --text: #1f1a15;
-    --text-2: #4a4139;
-    --muted: #776c62;
-    --accent: #a65a0c;
-    --accent-2: #8c4b08;
-    --accent-soft: rgb(196 112 24 / 12%);
+    --bg: #f2f3f5;
+    --bg-2: #e9ebee;
+    --surface: #ffffff;
+    --surface-2: #f1f2f4;
+    --surface-3: #e2e4e8;
+    --line: rgb(20 25 35 / 9%);
+    --line-2: rgb(20 25 35 / 16%);
+    --text: #16181c;
+    --text-2: #3f444c;
+    --muted: #6b707a;
+    --accent: #2f5fe0;
+    --accent-2: #234cbd;
+    --accent-soft: rgb(47 95 224 / 11%);
     --on-accent: #fff;
     --live: #d4373d;
     --ok: #1c8a55;
     --warn: #b7791f;
     --bad: #c9372c;
-    --lamp: #e0901f;
-    --heat: #d9581c;
-    --shadow: 0 1px 2px rgb(70 45 20 / 6%), 0 8px 24px rgb(70 45 20 / 8%);
-    --logo-bg: #2a2420;
+    --lamp: #f2a91c;
+    --on-lamp: #2e1f00;
+    --on-heat: #2e0c00;
+    --heat: #f0612f;
+    --shadow: 0 1px 2px rgb(20 25 35 / 6%), 0 8px 24px rgb(20 25 35 / 8%);
+    --logo-bg: #24272c;
     color-scheme: light;
   }
 }
 :root[data-theme="light"] {
-  --bg: #f6f2ec;
-  --bg-2: #efe9e1;
-  --surface: #fffdfa;
-  --surface-2: #f5f0e9;
-  --surface-3: #e9e1d6;
-  --line: rgb(70 45 20 / 9%);
-  --line-2: rgb(70 45 20 / 16%);
-  --text: #1f1a15;
-  --text-2: #4a4139;
-  --muted: #776c62;
-  --accent: #a65a0c;
-  --accent-2: #8c4b08;
-  --accent-soft: rgb(196 112 24 / 12%);
+  --bg: #f2f3f5;
+  --bg-2: #e9ebee;
+  --surface: #ffffff;
+  --surface-2: #f1f2f4;
+  --surface-3: #e2e4e8;
+  --line: rgb(20 25 35 / 9%);
+  --line-2: rgb(20 25 35 / 16%);
+  --text: #16181c;
+  --text-2: #3f444c;
+  --muted: #6b707a;
+  --accent: #2f5fe0;
+  --accent-2: #234cbd;
+  --accent-soft: rgb(47 95 224 / 11%);
   --on-accent: #fff;
   --live: #d4373d;
   --ok: #1c8a55;
   --warn: #b7791f;
   --bad: #c9372c;
-  --lamp: #e0901f;
-  --heat: #d9581c;
-  --shadow: 0 1px 2px rgb(70 45 20 / 6%), 0 8px 24px rgb(70 45 20 / 8%);
-  --logo-bg: #2a2420;
+  --lamp: #f2a91c;
+  --on-lamp: #2e1f00;
+  --on-heat: #2e0c00;
+  --heat: #f0612f;
+  --shadow: 0 1px 2px rgb(20 25 35 / 6%), 0 8px 24px rgb(20 25 35 / 8%);
+  --logo-bg: #24272c;
   color-scheme: light;
 }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -156,7 +162,7 @@ input:focus-visible, .btn:focus-visible, .chip:focus-visible, a:focus-visible, b
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgb(52 211 153 / 18%); }
 .dot.bad { background: var(--bad); box-shadow: 0 0 0 3px rgb(248 113 113 / 18%); }
-.dot.on { background: var(--lamp); box-shadow: 0 0 0 3px rgb(255 181 71 / 20%); }
+.dot.on { background: var(--lamp); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lamp) 22%, transparent); }
 .dot.live { background: var(--live); box-shadow: 0 0 0 3px rgb(255 77 106 / 20%); }
 
 /* switch */
@@ -175,11 +181,11 @@ a.card:hover { border-color: var(--line-2); background: var(--surface-2); }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .stat { display: flex; align-items: center; gap: 14px; }
 .stat .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
-.stat .ico.on { background: rgb(255 181 71 / 15%); color: var(--lamp); }
-.stat .ico.ok { background: rgb(52 211 153 / 14%); color: var(--ok); }
-.stat .ico.bad { background: rgb(248 113 113 / 14%); color: var(--bad); }
-.stat .ico.live { background: rgb(255 90 95 / 14%); color: var(--live); }
-.stat .ico.heat { background: rgb(255 122 69 / 15%); color: var(--heat); }
+.stat .ico.on { background: var(--lamp); color: var(--on-lamp); }
+.stat .ico.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.stat .ico.bad { background: var(--bad); color: #fff; }
+.stat .ico.live { background: var(--accent); color: var(--on-accent); }
+.stat .ico.heat { background: var(--heat); color: var(--on-heat); }
 .stat b { display: block; font-size: 1.05rem; }
 .stat span { color: var(--muted); font-size: .88rem; }
 
@@ -221,8 +227,8 @@ a.card:hover { border-color: var(--line-2); background: var(--surface-2); }
 .quick-lights { display: flex; gap: 10px; flex-wrap: wrap; }
 .light-chip { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; font-weight: 550; }
 .light-chip svg { color: var(--muted); }
-.light-chip.on { border-color: rgb(255 181 71 / 40%); background: rgb(255 181 71 / 10%); }
-.light-chip.on svg { color: var(--lamp); }
+.light-chip.on { border-color: var(--lamp); background: var(--lamp); color: var(--on-lamp); }
+.light-chip.on svg { color: var(--on-lamp); }
 
 /* ---------- guide ---------- */
 .guide-tools { display: grid; gap: 12px; margin-bottom: 14px; }
@@ -290,7 +296,7 @@ a.card:hover { border-color: var(--line-2); background: var(--surface-2); }
 .room-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .room-head h3 { font-size: 1.05rem; }
 .room-head span { font-size: .85rem; color: var(--muted); }
-.room.on { border-color: rgb(255 181 71 / 35%); background: linear-gradient(160deg, rgb(255 181 71 / 10%), var(--surface) 60%); }
+.room.on { border-color: color-mix(in srgb, var(--lamp) 50%, transparent); background: color-mix(in srgb, var(--lamp) 8%, var(--surface)); }
 input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 34px; background: transparent; cursor: pointer; }
 input[type="range"]::-webkit-slider-runnable-track { height: 34px; border-radius: 12px; background: linear-gradient(90deg, var(--surface-3), var(--lamp)); }
 input[type="range"]::-moz-range-track { height: 34px; border-radius: 12px; background: linear-gradient(90deg, var(--surface-3), var(--lamp)); }
@@ -475,9 +481,9 @@ select { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); bord
 .tv-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
 .tv-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
 .tv-row .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
-.tv-row .ico.live { background: rgb(255 90 95 / 14%); color: var(--live); }
-.tv-row .ico.bad { background: rgb(242 117 106 / 12%); color: var(--bad); }
-.tv-row .ico.warn { background: rgb(242 193 78 / 14%); color: var(--warn); }
+.tv-row .ico.live { background: var(--accent); color: var(--on-accent); }
+.tv-row .ico.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.tv-row .ico.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .tv-text { display: grid; min-width: 0; }
 .tv-text b { font-size: .94rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-text small { font-size: .8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -567,8 +573,8 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .wall-room svg { width: 26px; height: 26px; color: var(--muted); }
 .wall-room b { font-size: 1rem; }
 .wall-room small { color: var(--muted); }
-.wall-room.on { background: color-mix(in srgb, var(--lamp) 16%, var(--surface)); border-color: color-mix(in srgb, var(--lamp) 45%, transparent); }
-.wall-room.on svg { color: var(--lamp); }
+.wall-room.on { background: var(--lamp); border-color: var(--lamp); color: var(--on-lamp); }
+.wall-room.on svg, .wall-room.on small { color: var(--on-lamp); }
 .wall-tv, .wall-routines { display: grid; gap: 12px; }
 .wall-tv-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
 .wall-tv-row svg { color: var(--accent); }
@@ -578,12 +584,12 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 /* ---------- heating: the thermostat dial ---------- */
 .thermo-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 .thermo { display: grid; gap: 16px; }
-.thermo.heating { border-color: color-mix(in srgb, var(--heat) 40%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--heat) 9%, var(--surface)), var(--surface) 60%); }
+.thermo.heating { border-color: color-mix(in srgb, var(--heat) 50%, transparent); background: color-mix(in srgb, var(--heat) 8%, var(--surface)); }
 .thermo-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .thermo-head h3 { font-size: 1.15rem; }
 .heat-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: .85rem; font-weight: 650; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
 .heat-pill svg { width: 16px; height: 16px; }
-.heat-pill.heating { background: color-mix(in srgb, var(--heat) 16%, transparent); color: var(--heat); }
+.heat-pill.heating { background: var(--heat); color: var(--on-heat); }
 .heat-pill.off { color: var(--muted); }
 .heat-pill.heating svg { animation: flicker 2.4s ease-in-out infinite; transform-origin: 50% 90%; }
 @keyframes flicker { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12) rotate(-3deg); } }
@@ -616,7 +622,7 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .boost-row > span { color: var(--muted); font-size: .9rem; padding-right: 4px; }
 .boost-row .btn { padding: 9px 6px; }
 .boost-on { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 14px;
-  background: color-mix(in srgb, var(--heat) 14%, transparent); color: var(--heat); font-weight: 600; }
+  background: var(--heat); color: var(--on-heat); font-weight: 600; }
 .boost-on svg { width: 20px; height: 20px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
