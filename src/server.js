@@ -16,6 +16,7 @@ import * as devices from './devices.js';
 import * as hive from './hive.js';
 import * as smarttv from './smarttv.js';
 import * as ring from './ring.js';
+import * as yale from './yale.js';
 import * as routines from './routines.js';
 import * as cameras from './cameras.js';
 
@@ -167,7 +168,7 @@ async function api(req, res, url) {
   // --- authenticated -------------------------------------------------------------------------
   if (route === 'GET /api/state') {
     const [lights, tv] = await Promise.all([hue.summary().catch((e) => ({ error: e.message })), sky.summary().catch(() => [])]);
-    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
+    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
   }
   if (route === 'POST /api/hue/pair') return send(res, 200, await hue.pair().catch((e) => ({ ok: false, error: `Bridge not answering (${e.name})` })));
 
@@ -371,6 +372,28 @@ async function api(req, res, url) {
     } catch (e) { return send(res, 404, { error: e.message }); }
   }
 
+  // --- Yale alarm (cloud account) -------------------------------------------------------------------
+  if (req.method === 'POST' && (m = url.pathname.match(/^\/api\/yale\/(signin|signout|arm|disarm|pin)$/))) {
+    const body = await readJson(req);
+    try {
+      if (m[1] === 'pin') {
+        // changing the disarm PIN needs the household password, so a signed-in wall tablet can't be used to reset it
+        const ok = auth.checkPassword(String(clientIp(req)).replace(/^::ffff:/, ''), body.password);
+        if (!ok.ok) return send(res, 403, { error: ok.error === 'Wrong password' ? 'Wrong household password' : ok.error });
+      }
+      const r = m[1] === 'signin' ? await yale.signIn(body.email, body.password)
+        : m[1] === 'signout' ? yale.signOut()
+          : m[1] === 'arm' ? await yale.arm(String(body.mode))
+            : m[1] === 'disarm' ? await yale.disarm(body.pin)
+              : yale.setPin(body.pin);
+      console.log(new Date().toISOString(), `yale: ${m[1]} ${body.mode ?? ''} ok`);
+      return send(res, 200, r ?? { ok: true });
+    } catch (e) {
+      console.error(new Date().toISOString(), `yale: ${m[1]} failed: ${e.message}`);
+      return send(res, e.status ?? 502, { error: e.message });
+    }
+  }
+
   if (route === 'GET /api/settings') return send(res, 200, publicSettings());
   if (route === 'POST /api/settings') {
     const body = await readJson(req);
@@ -404,6 +427,7 @@ netmon.start();
 android.start();
 smarttv.start();
 ring.start();
+yale.start();
 routines.start();
 cameras.start();
 hive.start();

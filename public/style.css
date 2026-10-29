@@ -581,6 +581,30 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .wall-tv-row .progress { grid-column: 2; margin: 0; }
 .wall-lights h3, .wall-tv h3, .wall-routines h3 { font-size: 1.05rem; }
 
+/* ---------- Yale alarm ---------- */
+.alarm { display: grid; gap: 14px; }
+.alarm-head { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 14px; align-items: center; }
+.alarm-ico { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
+.alarm-ico svg { width: 26px; height: 26px; }
+.alarm .tv-text b { font-size: 1.15rem; }
+.alarm .tv-text small.warn { color: var(--warn); white-space: normal; }
+.alarm.armed { border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.alarm.armed .alarm-ico { background: var(--bad); color: #fff; }
+.alarm.part .alarm-ico { background: var(--warn); color: var(--on-lamp); }
+.alarm.disarmed .alarm-ico { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.alarm-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.status-strip ~ .alarm { margin-bottom: 22px; }
+.pin-sheet { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.pin-sheet .actions { width: 100%; max-width: 300px; display: grid; gap: 8px; }
+.pin-dots { display: flex; gap: 12px; min-height: 16px; }
+.pin-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-2); }
+.pin-dots i.on { background: var(--text); border-color: var(--text); }
+.pinpad { display: grid; grid-template-columns: repeat(3, 76px); gap: 12px; }
+.pin-key { height: 64px; border-radius: 16px; border: 1px solid var(--line-2); background: var(--surface-2); font-size: 1.5rem; font-weight: 650; cursor: pointer; font-variant-numeric: tabular-nums; }
+.pin-key:hover { background: var(--surface-3); }
+.pin-key:active { transform: scale(.96); }
+.pin-key[aria-label="Clear PIN"] { font-size: .9rem; font-weight: 550; color: var(--muted); }
+
 /* ---------- heating: the thermostat dial ---------- */
 .thermo-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 .thermo { display: grid; gap: 16px; }

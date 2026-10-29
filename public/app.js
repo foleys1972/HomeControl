@@ -498,6 +498,106 @@ function ringSettingsCard() {
     codeRow, h('div', { class: 'row' }, btn), msg);
 }
 
+// --- Yale alarm (cloud account) -------------------------------------------------------------------------------
+const ALARM_STATE = { armed: 'Armed', part: 'Part armed', disarmed: 'Disarmed' };
+async function yalePost(action, body, note) {
+  try { await api('POST', `/api/yale/${action}`, body ?? {}); if (note) toast(note); } catch (e) { toast(e.message); }
+  await refresh();
+}
+function alarmNotes(y) {
+  const open = (y.sensors ?? []).filter((d) => d.open);
+  const low = (y.sensors ?? []).filter((d) => d.lowBattery);
+  const tamper = (y.sensors ?? []).filter((d) => d.tamper);
+  return [
+    open.length ? `${open.map((d) => d.name).join(', ')} open` : null,
+    low.length ? `Low battery: ${low.map((d) => d.name).join(', ')}` : null,
+    tamper.length ? `Tamper: ${tamper.map((d) => d.name).join(', ')}` : null,
+  ].filter(Boolean);
+}
+function alarmCard(y) {
+  const state = y.mode ?? 'unknown';
+  const notes = alarmNotes(y);
+  const doors = (y.sensors ?? []).filter((d) => d.kind === 'door');
+  const sub = y.error ? y.error : !y.at ? 'Checking the alarm…' : notes.length ? notes.join(' · ') : doors.length ? 'All doors and windows closed' : 'Yale alarm';
+  const arm = (mode) => h('button', { class: 'btn', onclick: () => yalePost('arm', { mode }, mode === 'arm' ? 'Alarm armed' : 'Alarm part armed') },
+    icon(mode === 'arm' ? 'shield' : 'moon'), mode === 'arm' ? 'Arm' : 'Part arm');
+  return h('div', { class: `card alarm ${state}` },
+    h('div', { class: 'alarm-head' }, h('div', { class: 'alarm-ico' }, icon('shield')),
+      h('div', { class: 'tv-text' }, h('b', {}, ALARM_STATE[state] ?? 'Alarm'), h('small', { class: notes.length || y.error ? 'warn' : '' }, sub))),
+    y.at ? h('div', { class: 'alarm-actions' },
+      state !== 'armed' ? arm('arm') : null,
+      state !== 'part' ? arm('home') : null,
+      state !== 'disarmed' ? h('button', { class: 'btn primary', onclick: () => pinSheet(y) }, icon('power'), 'Disarm') : null) : null);
+}
+function alarmSection(y) {
+  if (!y?.signedIn) return [];
+  return [h('div', { class: 'section-title' }, h('h2', {}, 'Alarm')), alarmCard(y)];
+}
+function pinSheet(y) {
+  if (!y.pinSet) { toast('Set an alarm PIN in Settings first'); location.hash = '#/settings'; return; }
+  const sheet = $('#sheet');
+  let pin = '';
+  const dots = h('div', { class: 'pin-dots', 'aria-live': 'polite' });
+  const msg = h('p', { class: 'error', role: 'alert' });
+  const show = () => {
+    dots.replaceChildren(...Array.from({ length: Math.max(4, pin.length) }, (_, i) => h('i', { class: i < pin.length ? 'on' : '' })));
+    dots.setAttribute('aria-label', `${pin.length} digits entered`);
+  };
+  const ok = h('button', { class: 'btn primary block', onclick: async () => {
+    if (pin.length < 4) { msg.textContent = 'Enter your alarm PIN'; return; }
+    ok.disabled = true;
+    try { await api('POST', '/api/yale/disarm', { pin }); sheet.close(); toast('Alarm disarmed'); refresh(); }
+    catch (e) { msg.textContent = e.message; pin = ''; show(); }
+    ok.disabled = false;
+  } }, 'Disarm');
+  const key = (label, fn, aria) => h('button', { type: 'button', class: 'pin-key', 'aria-label': aria ?? label, onclick: () => { fn(); msg.textContent = ''; show(); } }, label);
+  const digit = (d) => key(String(d), () => { if (pin.length < 8) pin += d; });
+  sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top pin-sheet' },
+    h('h2', {}, 'Disarm the alarm'), h('p', { class: 'syn' }, 'Enter your Home Control alarm PIN.'), dots,
+    h('div', { class: 'pinpad' }, [1, 2, 3, 4, 5, 6, 7, 8, 9].map(digit), key('Clear', () => { pin = ''; }, 'Clear PIN'), digit(0), key('⌫', () => { pin = pin.slice(0, -1); }, 'Delete last digit')),
+    msg, h('div', { class: 'actions' }, ok, h('button', { class: 'btn block', onclick: () => sheet.close() }, 'Cancel')))));
+  show();
+  sheet.showModal();
+}
+function yaleSettingsCard() {
+  const y = S.state?.yale ?? {};
+  const msg = h('p', { class: 'desc', role: 'status' });
+  if (y.signedIn) {
+    const pinIn = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: 8, placeholder: '4 to 8 digits', 'aria-label': 'New alarm PIN' });
+    const pw = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Household password' });
+    const save = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
+      save.disabled = true;
+      try { await api('POST', '/api/yale/pin', { pin: pinIn.value, password: pw.value }); pinIn.value = ''; pw.value = ''; msg.textContent = 'Alarm PIN saved.'; refresh(); }
+      catch (e) { msg.textContent = e.message; }
+      save.disabled = false;
+    } }, y.pinSet ? 'Change PIN' : 'Set PIN');
+    const n = (y.sensors ?? []).length;
+    return h('div', { class: 'card' }, h('h3', {}, 'Yale alarm'),
+      h('p', { class: 'desc' }, `Signed in to Yale as ${y.account}. Your password is not stored — only a sign-in token. ${n} sensor${n === 1 ? '' : 's'} found.`),
+      h('p', { class: 'desc' }, y.pinSet ? 'Disarming needs the alarm PIN. To change it, enter a new PIN and the household password.'
+        : 'Set a PIN to disarm the alarm from Home Control. Setting it needs the household password, so nobody can change it from the hallway screen.'),
+      h('div', { class: 'fields' }, h('label', { class: 'field' }, y.pinSet ? 'New alarm PIN' : 'Alarm PIN', pinIn), h('label', { class: 'field' }, 'Household password', pw)),
+      h('div', { class: 'row' }, save, h('button', { type: 'button', class: 'btn ghost remove', onclick: async () => {
+        if (!(await confirmSheet('Sign out of Yale?', 'Home Control will stop showing and arming the alarm until you sign in again. The Yale app and your alarm are not affected.', 'Sign out'))) return;
+        await yalePost('signout', {}, 'Signed out of Yale');
+        rerender();
+      } }, icon('logout'), 'Sign out')), msg);
+  }
+  const email = h('input', { type: 'email', autocomplete: 'username', placeholder: 'you@example.com', 'aria-label': 'Yale email' });
+  const password = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Yale password' });
+  const btn = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
+    btn.disabled = true;
+    msg.textContent = 'Signing in…';
+    try { await api('POST', '/api/yale/signin', { email: email.value, password: password.value }); password.value = ''; toast('Signed in to Yale'); await refresh(); rerender(); }
+    catch (e) { msg.textContent = e.message; }
+    btn.disabled = false;
+  } }, 'Sign in to Yale');
+  return h('div', { class: 'card' }, h('h3', {}, 'Yale alarm'),
+    h('p', { class: 'desc' }, 'Sign in with the same email and password as the Yale Alarm app. Your password is used once and not stored.'),
+    h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Yale email', email), h('label', { class: 'field' }, 'Yale password', password)),
+    h('div', { class: 'row' }, btn), msg);
+}
+
 // --- routines ------------------------------------------------------------------------------------------------
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -511,6 +611,7 @@ function routineWhen(r) {
   return `${which} at ${r.trigger.time}`;
 }
 function routineAction(a) {
+  if (a.type === 'alarm') return a.mode === 'home' ? 'Part arm the alarm' : 'Arm the alarm';
   if (a.type === 'lights') return `${a.name || 'Lights'}: ${a.on ? (a.bri != null ? `dim to ${a.bri}%` : 'on') : 'off'}`;
   if (a.type === 'heating') return `Heating ${a.target}°${a.minutes ? ` for ${mins(a.minutes * 60)}, then back to schedule` : ''}`;
   const legacy = a.box != null && a.device == null; // saved before TV actions: name was the channel
@@ -629,6 +730,11 @@ function routineEditor(r = null, preset = null) {
         rooms.length ? h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Lights', target), h('label', { class: 'field' }, 'Set to', mode), briWrap)
           : h('p', { class: 'muted' }, 'Pair the Hue bridge in Settings to add lights.'), remove);
       if (!rooms.length) read = null;
+    } else if (a.type === 'alarm') {
+      const mode = h('select', { 'aria-label': 'Alarm' }, h('option', { value: 'arm', selected: a.mode !== 'home' }, 'Full arm'), h('option', { value: 'home', selected: a.mode === 'home' }, 'Part arm (night)'));
+      read = () => ({ type: 'alarm', mode: mode.value });
+      row = h('div', { class: 'routine-row' }, h('div', { class: 'row-ico' }, icon('shield')),
+        h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Alarm', mode), h('p', { class: 'muted' }, 'Routines can arm the alarm. Disarming always needs your PIN.')), remove);
     } else if (a.type === 'heating') {
       const which = h('select', { 'aria-label': 'Thermostat' }, thermostats.length ? thermostats.map((t) => h('option', { value: t.id, selected: a.id === t.id }, t.name)) : h('option', { value: '' }, 'Heating'));
       const temp = h('input', { type: 'number', min: 5, max: 32, step: 0.5, value: a.target ?? 21, 'aria-label': 'Temperature' });
@@ -701,6 +807,7 @@ function routineEditor(r = null, preset = null) {
     h('div', { class: 'row add-actions' },
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'lights', on: true }) }, icon('bulb'), 'Lights'),
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'heating', target: 21 }) }, icon('flame'), 'Heating'),
+      S.state?.yale?.signedIn ? h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'alarm', mode: 'arm' }) }, icon('shield'), 'Alarm') : null,
       tvs.length ? h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'tv' }) }, icon('tv'), 'TV') : null),
     msg,
     h('div', { class: 'actions' }, save, h('button', { type: 'button', class: 'btn', onclick: () => sheet.close() }, 'Cancel')))));
@@ -771,6 +878,7 @@ function renderWall(main) {
           h('span', { class: 'cam-ico' }, icon('bell'))),
         h('div', { class: 'cam-body' }, h('div', { class: 'tv-text' }, h('b', {}, doorbell.name),
           h('small', {}, lastRing ? `Doorbell rang ${ago(lastRing.at)}` : 'No rings today')))) : null,
+      s.yale?.signedIn ? alarmCard(s.yale) : null,
       t ? thermostatCard(t, s.hive.boost) : null,
       rooms.length ? h('div', { class: 'card wall-lights' }, h('h3', {}, 'Lights'),
         h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
@@ -874,6 +982,7 @@ async function renderHome(main) {
       h('a', { class: 'card stat', href: '#/network' }, h('div', { class: 'ico' }, icon('switch')),
         h('div', {}, h('b', {}, s?.network.ciscoConfigured ? `${s.network.switches.filter((x) => x.ok).length}/${s.network.switches.length} switches OK` : 'Switch monitoring off'),
           h('span', {}, s?.network.ciscoConfigured ? 'Cisco 3560s' : 'Add credentials in Settings')))),
+    ...alarmSection(s?.yale),
     h('div', { class: 'heroes' }, (s?.tv ?? []).map(heroCard)),
     // replaceChildren() doesn't flatten arrays, so spread the optional section
     ...((s?.android ?? []).length || (s?.smarttv ?? []).length ? [
@@ -1671,6 +1780,7 @@ async function renderSettings(main) {
     hueLightsCard(s),
     hiveSettingsCard(),
     ringSettingsCard(),
+    yaleSettingsCard(),
     h('div', { class: 'card' }, h('h3', {}, 'Sky Q boxes'), h('p', { class: 'desc' }, 'Names appear on the Home page and remote.'),
       s.sky.map((b) => h('div', { class: 'fields dev-row' },
         h('label', { class: 'field' }, 'Name', h('input', { name: `sky.${b.id}.name`, value: b.name })),

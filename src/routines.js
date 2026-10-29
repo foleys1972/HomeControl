@@ -8,6 +8,7 @@ import * as hive from './hive.js';
 import * as sky from './skyq.js';
 import * as android from './android.js';
 import * as smarttv from './smarttv.js';
+import * as yale from './yale.js';
 
 const TZ = 'Europe/London';
 const CATCH_UP_MS = 10 * 60_000; // a routine missed by a restart still runs if we're back within 10 minutes
@@ -71,6 +72,11 @@ function cleanAction(a) {
     return out;
   }
   if (a?.type === 'tv') return cleanTv(a);
+  // routines can arm the alarm but never disarm it
+  if (a?.type === 'alarm') {
+    if (!['arm', 'home'].includes(a.mode)) throw new Error('Pick full arm or part arm');
+    return { type: 'alarm', mode: a.mode };
+  }
   throw new Error('Unknown action');
 }
 
@@ -159,10 +165,12 @@ async function runAction(a) {
     if (what === 'off' && !box.standby) return sky.sendKey(id, 'power');
     return null;
   }
+  if (a.type === 'alarm') return yale.arm(a.mode);
 }
 
 const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`} ${a.on ? (a.bri != null ? `${a.bri}%` : 'on') : 'off'}`
   : a.type === 'heating' ? `heating ${a.target}°${a.minutes ? ` for ${a.minutes} min` : ''}`
+  : a.type === 'alarm' ? (a.mode === 'home' ? 'part arm the alarm' : 'arm the alarm')
   : `${a.name || a.device || a.box}: ${a.do === 'channel' || !a.do ? `channel ${a.channel || a.sid}` : a.do === 'volume' ? `volume ${a.level}` : a.do === 'app' ? `open ${a.app}` : a.do}`);
 
 export async function run(id, why = 'manual') {
