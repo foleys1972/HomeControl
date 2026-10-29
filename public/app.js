@@ -447,7 +447,7 @@ function ringCamCard(d) {
 function ringSection(r, homeCams = [], { title = true } = {}) {
   const signedIn = Boolean(r?.signedIn);
   if (!signedIn && !homeCams.length) return [];
-  const cams = signedIn ? (r.devices ?? []).filter((d) => d.type !== 'chime') : [];
+  const cams = signedIn ? (r.devices ?? []).filter((d) => d.type !== 'chime' && !d.hidden) : [];
   return [
     title ? h('div', { class: 'section-title' }, h('h2', {}, 'Doorbell & cameras'), h('a', { href: '#/cameras' }, 'All cameras →')) : null,
     signedIn && r.error ? h('div', { class: 'card notice' }, h('p', { class: 'muted' }, r.error)) : null,
@@ -464,8 +464,13 @@ function ringSettingsCard() {
   const msg = h('p', { class: 'desc', role: 'status' });
   if (r.signedIn) {
     const n = (r.devices ?? []).length;
+    const cams = (r.devices ?? []).filter((d) => d.type !== 'chime');
     return h('div', { class: 'card' }, h('h3', {}, 'Ring doorbell & cameras'),
       h('p', { class: 'desc' }, `Signed in to Ring as ${r.account}. Your password is not stored — only a sign-in token. ${n} device${n === 1 ? '' : 's'} found.`),
+      cams.length ? h('div', { class: 'ring-show' }, h('p', { class: 'desc' }, 'Turn off a camera you don’t use to hide it on Home, Cameras and the wall and hallway screens.'),
+        cams.map((d) => h('label', { class: 'light-row' }, h('span', {}, d.name, h('small', { class: 'muted' }, ` · ${d.type === 'doorbell' ? 'Doorbell' : 'Camera'}`)),
+          h('span', { class: 'switch' }, h('input', { type: 'checkbox', checked: !d.hidden, 'aria-label': `Show ${d.name}`,
+            onchange: (e) => ringPost('hide', { id: d.id, hidden: !e.currentTarget.checked }, e.currentTarget.checked ? `${d.name} shown` : `${d.name} hidden`) }), h('span'))))) : null,
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn ghost remove', onclick: async () => {
         if (!(await confirmSheet('Sign out of Ring?', 'Home Control will stop showing your doorbell and cameras until you sign in again. The Ring app is not affected.', 'Sign out'))) return;
         await ringPost('signout', {}, 'Signed out of Ring');
@@ -862,7 +867,8 @@ function wallClock() {
 function renderWall(main) {
   if (S.dragging) return;
   const s = S.state ?? {};
-  const doorbell = (s.ring?.devices ?? []).find((d) => d.type === 'doorbell') ?? (s.ring?.devices ?? []).find((d) => d.type === 'camera');
+  const shown = (s.ring?.devices ?? []).filter((d) => !d.hidden);
+  const doorbell = shown.find((d) => d.type === 'doorbell') ?? shown.find((d) => d.type === 'camera');
   const lastRing = (s.ring?.events ?? []).find((e) => e.kind === 'ding');
   const t = s.hive?.thermostats?.[0];
   const rooms = s.lights?.paired ? (s.lights.rooms ?? []).filter((r) => r.type === 'Room') : [];
@@ -995,7 +1001,7 @@ function weatherSheet(w) {
 function renderHallway(main) {
   if (S.dragging) return;
   const s = S.state ?? {};
-  const ringCams = (s.ring?.devices ?? []).filter((d) => d.type !== 'chime').sort((a, b) => Number(b.type === 'doorbell') - Number(a.type === 'doorbell'));
+  const ringCams = (s.ring?.devices ?? []).filter((d) => d.type !== 'chime' && !d.hidden).sort((a, b) => Number(b.type === 'doorbell') - Number(a.type === 'doorbell'));
   const t = s.hive?.thermostats?.[0];
   const rooms = s.lights?.paired ? (s.lights.rooms ?? []).filter((r) => r.type === 'Room') : [];
   const lit = rooms.filter((r) => r.on);

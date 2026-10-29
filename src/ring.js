@@ -77,7 +77,7 @@ export async function verifyCode(code) {
 
 export function signOut() {
   pending = null;
-  store.update((c) => { c.ring = { hardwareId: c.ring?.hardwareId }; });
+  store.update((c) => { c.ring = { hardwareId: c.ring?.hardwareId, hidden: c.ring?.hidden }; });
   cache = { at: 0, devices: [], events: [] };
 }
 
@@ -170,9 +170,23 @@ async function recentEvents(list) {
   return (Array.isArray(h) ? h : []).map((e) => ({ id: String(e.id), at: e.created_at, kind: e.kind, device: e.doorbot?.description ?? '' }));
 }
 
+// Devices picked in Settings as not to show (an unused camera, say): still listed there, hidden everywhere else.
+const hiddenIds = () => new Set((cfg().hidden ?? []).map(String));
+
+export function setHidden(id, hidden) {
+  need(id);
+  const set = hiddenIds();
+  if (hidden) set.add(String(id)); else set.delete(String(id));
+  store.update((c) => { c.ring = { ...(c.ring ?? {}), hidden: [...set] }; });
+  return { ok: true };
+}
+
 export function summary() {
   const c = cfg();
-  return { signedIn: Boolean(c.refreshToken), account: c.email ?? null, devices: cache.devices, events: cache.events.slice(0, 8), at: cache.at || null, error: cache.error ?? null };
+  const hidden = hiddenIds();
+  const devices = cache.devices.map((d) => ({ ...d, hidden: hidden.has(String(d.id)) }));
+  const hiddenNames = new Set(devices.filter((d) => d.hidden).map((d) => d.name));
+  return { signedIn: Boolean(c.refreshToken), account: c.email ?? null, devices, events: cache.events.filter((e) => !hiddenNames.has(e.device)).slice(0, 8), at: cache.at || null, error: cache.error ?? null };
 }
 
 export function start() {

@@ -351,13 +351,14 @@ async function api(req, res, url) {
   }
 
   // --- Ring (cloud account) -------------------------------------------------------------------------
-  if (req.method === 'POST' && (m = url.pathname.match(/^\/api\/ring\/(signin|code|signout|light|siren)$/))) {
+  if (req.method === 'POST' && (m = url.pathname.match(/^\/api\/ring\/(signin|code|signout|light|siren|hide)$/))) {
     const body = await readJson(req);
     try {
       const r = m[1] === 'signin' ? await ring.signIn(body.email, body.password)
         : m[1] === 'code' ? await ring.verifyCode(body.code)
           : m[1] === 'signout' ? ring.signOut()
-            : m[1] === 'light' ? await ring.setLight(body.id, Boolean(body.on))
+            : m[1] === 'hide' ? ring.setHidden(body.id, Boolean(body.hidden))
+              : m[1] === 'light' ? await ring.setLight(body.id, Boolean(body.on))
               : await ring.setSiren(body.id, Boolean(body.on));
       console.log(new Date().toISOString(), `ring: ${m[1]} ${body.id ?? ''} ok`);
       return send(res, 200, r ?? { ok: true });
