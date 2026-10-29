@@ -376,19 +376,11 @@ async function api(req, res, url) {
   if (req.method === 'POST' && (m = url.pathname.match(/^\/api\/yale\/(signin|signout|arm|disarm|pin)$/))) {
     const body = await readJson(req);
     try {
-      if (m[1] === 'pin') {
-        // changing the disarm PIN needs the household password, so a signed-in wall tablet can't be used to reset it
-        const ok = auth.checkPassword(String(clientIp(req)).replace(/^::ffff:/, ''), body.password);
-        if (!ok.ok) {
-          console.warn(new Date().toISOString(), `yale: pin refused: ${ok.error}`);
-          return send(res, 403, { error: ok.error === 'Wrong password' ? 'Wrong household password' : ok.error });
-        }
-      }
       const r = m[1] === 'signin' ? await yale.signIn(body.email, body.password)
         : m[1] === 'signout' ? yale.signOut()
           : m[1] === 'arm' ? await yale.arm(String(body.mode))
             : m[1] === 'disarm' ? await yale.disarm(body.pin)
-              : yale.setPin(body.pin);
+              : await yale.setPin(body.pin, body.password); // checks the Yale password, so the wall tablet can't change it
       console.log(new Date().toISOString(), `yale: ${m[1]} ${body.mode ?? ''} ok`);
       return send(res, 200, r ?? { ok: true });
     } catch (e) {

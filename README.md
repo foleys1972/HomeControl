@@ -23,7 +23,7 @@ notice. The Yale calls follow [yale-smart-alarm-client](https://github.com/domwi
   household password. Not exposed to the internet.
 - Settings and secrets (Hue key, Cisco password, Hive / Ring / Yale sign-in tokens, alarm PIN hash, ADB key) live in
   `/var/lib/home-control/` (mode 600), entered on the Settings page — never in the repo. Hive, Ring and Yale passwords are
-  used once at sign-in and not stored. Disarming the alarm needs a PIN; setting it needs the household password, and
+  used once at sign-in and not stored. Disarming the alarm needs a PIN; setting it needs the Yale password, and
   routines can arm the alarm but never disarm it.
 - Cisco access is read-only: only `show` commands are allowed (`src/cisco.js`).
 

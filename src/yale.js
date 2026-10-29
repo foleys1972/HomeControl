@@ -1,7 +1,7 @@
 // Yale Smart Alarm (the "Yale Alarm" app, formerly Yale Smart Living) through the Yale account — cloud only.
 // Uses the same endpoints as the Yale app, as the yale-smart-alarm-client project does (Apache-2.0,
 // github.com/domwillcode/yale-smart-alarm-client): password sign-in once, then the refresh token. The password
-// is never stored. Disarming needs the Home Control alarm PIN (scrypt hash, set with the household password).
+// is never stored. Disarming needs the Home Control alarm PIN (scrypt hash, set with the Yale password).
 // The API is unofficial and can change.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import * as store from './store.js';
@@ -152,9 +152,26 @@ const failures = { count: 0, until: 0 };
 const pinHash = (pin, salt) => scryptSync(String(pin), salt, 64).toString('hex');
 const refuse = (status, msg) => Object.assign(new Error(msg), { status });
 
-/** Set or change the alarm PIN. The caller has already checked the household password. */
-export function setPin(pin) {
+const owner = { count: 0, until: 0 }; // wrong Yale passwords when setting the PIN
+
+/** Set or change the alarm PIN. Needs the Yale account password (checked with Yale), so a signed-in wall tablet
+ *  can't be used to change it. */
+export async function setPin(pin, password) {
   if (!/^\d{4,8}$/.test(String(pin ?? ''))) throw refuse(400, 'The PIN must be 4 to 8 digits');
+  const c = cfg();
+  if (!c.refreshToken || !c.email) throw refuse(400, 'Sign in to Yale first');
+  if (!password) throw refuse(400, 'Enter your Yale password');
+  if (owner.until > Date.now()) throw refuse(429, `Too many wrong passwords — try again in ${Math.ceil((owner.until - Date.now()) / 60_000)} min`);
+  const r = await token({ grant_type: 'password', username: c.email, password: String(password) });
+  if (r.status === 400 || r.status === 401) {
+    owner.count += 1;
+    if (owner.count >= 3) { owner.until = Date.now() + 5 * 60_000; owner.count = 0; }
+    log('pin refused: wrong Yale password');
+    throw refuse(403, 'Wrong Yale password');
+  }
+  if (r.status !== 200 || !r.body.refresh_token) throw refuse(502, `Yale could not check the password (HTTP ${r.status})`);
+  owner.count = 0;
+  saveToken(c.email, r.body);
   const salt = randomBytes(16).toString('hex');
   store.update((c) => { c.yale = { ...(c.yale ?? {}), pin: { salt, hash: pinHash(pin, salt) } }; });
   failures.count = 0; failures.until = 0;
