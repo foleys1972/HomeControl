@@ -564,7 +564,8 @@ function yaleSettingsCard() {
   const msg = h('p', { class: 'desc', role: 'status' });
   if (y.signedIn) {
     const pinIn = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: 8, placeholder: '4 to 8 digits', 'aria-label': 'New alarm PIN' });
-    const pw = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Household password' });
+    // new-password stops the browser filling in the Yale password it saved for this site
+    const pw = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Household password' });
     const save = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
       save.disabled = true;
       try { await api('POST', '/api/yale/pin', { pin: pinIn.value, password: pw.value }); pinIn.value = ''; pw.value = ''; msg.textContent = 'Alarm PIN saved.'; refresh(); }
@@ -574,8 +575,8 @@ function yaleSettingsCard() {
     const n = (y.sensors ?? []).length;
     return h('div', { class: 'card' }, h('h3', {}, 'Yale alarm'),
       h('p', { class: 'desc' }, `Signed in to Yale as ${y.account}. Your password is not stored — only a sign-in token. ${n} sensor${n === 1 ? '' : 's'} found.`),
-      h('p', { class: 'desc' }, y.pinSet ? 'Disarming needs the alarm PIN. To change it, enter a new PIN and the household password.'
-        : 'Set a PIN to disarm the alarm from Home Control. Setting it needs the household password, so nobody can change it from the hallway screen.'),
+      h('p', { class: 'desc' }, y.pinSet ? 'Disarming needs the alarm PIN. To change it, enter a new PIN and the household password (the one you log in to Home Control with, not your Yale password).'
+        : 'Set a PIN to disarm the alarm from Home Control. Setting it needs the household password (the one you log in to Home Control with, not your Yale password), so nobody can change it from the hallway screen.'),
       h('div', { class: 'fields' }, h('label', { class: 'field' }, y.pinSet ? 'New alarm PIN' : 'Alarm PIN', pinIn), h('label', { class: 'field' }, 'Household password', pw)),
       h('div', { class: 'row' }, save, h('button', { type: 'button', class: 'btn ghost remove', onclick: async () => {
         if (!(await confirmSheet('Sign out of Yale?', 'Home Control will stop showing and arming the alarm until you sign in again. The Yale app and your alarm are not affected.', 'Sign out'))) return;

@@ -379,7 +379,10 @@ async function api(req, res, url) {
       if (m[1] === 'pin') {
         // changing the disarm PIN needs the household password, so a signed-in wall tablet can't be used to reset it
         const ok = auth.checkPassword(String(clientIp(req)).replace(/^::ffff:/, ''), body.password);
-        if (!ok.ok) return send(res, 403, { error: ok.error === 'Wrong password' ? 'Wrong household password' : ok.error });
+        if (!ok.ok) {
+          console.warn(new Date().toISOString(), `yale: pin refused: ${ok.error}`);
+          return send(res, 403, { error: ok.error === 'Wrong password' ? 'Wrong household password' : ok.error });
+        }
       }
       const r = m[1] === 'signin' ? await yale.signIn(body.email, body.password)
         : m[1] === 'signout' ? yale.signOut()
