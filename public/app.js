@@ -46,6 +46,15 @@ const ICONS = {
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
   switch: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  door: 'M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M3 21h18M14.5 12h.01',
+  eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  cloud: 'M7 18a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.7 3.7 0 0 1 17.5 18z',
+  cloudsun: 'M8 2.5V4M3 7.5h1.5M4.5 4l1 1M11.5 4l-1 1M5.6 10.5A3.5 3.5 0 0 1 11.5 6.6M9 20a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.4 1.4A3.3 3.3 0 0 1 18.5 20z',
+  rain: 'M7 15a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.7 3.7 0 0 1 17.5 15zM8 18.5 7 21M12 18.5 11 21M16 18.5 15 21',
+  snow: 'M7 15a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.7 3.7 0 0 1 17.5 15zM8 19h.01M12 20h.01M16 19h.01M10 22h.01M14 22h.01',
+  storm: 'M7 15a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6A3.7 3.7 0 0 1 17.5 15zM12.5 15l-2 4h3.5l-2 4',
+  fog: 'M4 8h16M3 12h18M5 16h14M8 20h8',
   flame: 'M12 22c3.9 0 7-2.9 7-6.8 0-3.1-2-5.4-3.6-7.2-.3 2-1.5 3.3-2.9 3.6.4-3.3-1.2-6.4-3.9-8.6.2 3.3-1.9 5.6-3.6 7.6C3.9 12.1 5 13.9 5 15.2 5 19.1 8.1 22 12 22z',
   sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1.5v2M12 20.5v2M4.6 4.6 6 6M18 18l1.4 1.4M1.5 12h2M20.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4',
   moon: 'M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z',
@@ -144,6 +153,7 @@ const PAGES = [
   { id: 'routines', label: 'Routines', icon: 'clock', desktopOnly: true }, // phones: clock icon in the top bar
   { id: 'network', label: 'Network', icon: 'network', desktopOnly: true },
   { id: 'settings', label: 'Settings', icon: 'settings' },
+  { id: 'hallway', label: 'Hallway', icon: 'shield', desktopOnly: true }, // full-screen hallway panel
   { id: 'wall', label: 'Wall tablet', icon: 'home', hidden: true }, // full-screen, not in the menus
 ];
 
@@ -842,7 +852,7 @@ async function keepAwake(on) {
   }
   wakeVideo.play().catch(() => {}); // may need a first tap: the wall view retries on every tap
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden && currentPage() === 'wall') keepAwake(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ['wall', 'hallway'].includes(currentPage())) keepAwake(true); });
 
 function wallClock() {
   const now = new Date();
@@ -892,6 +902,130 @@ function renderWall(main) {
       nextRoutines.length ? h('div', { class: 'card wall-routines' }, h('h3', {}, 'Coming up'),
         nextRoutines.map((r) => h('div', { class: 'wall-tv-row' }, icon('clock'),
           h('div', { class: 'tv-text' }, h('b', {}, r.name), h('small', {}, routineNext(r).replace('Next: ', '')))))) : null)));
+  keepAwake(true);
+}
+
+// --- hallway screen: alarm, heating, lights, cameras and weather (no TV) ------------------------------------
+// Alarm devices: what each one is saying, worst news first
+const SENSOR_ICON = { door: 'door', motion: 'eye', keypad: 'apps', lock: 'lock', siren: 'siren' };
+function sensorState(d) {
+  if (d.kind === 'door') return d.open ? ['Open', 'warn'] : d.open === false ? ['Closed', ''] : ['Unknown', ''];
+  if (d.kind === 'lock') return d.open ? ['Door open', 'warn'] : d.locked ? ['Locked', ''] : d.locked === false ? ['Unlocked', 'warn'] : ['Unknown', ''];
+  return [d.kind === 'motion' ? 'Ready' : 'OK', ''];
+}
+const sensorNeedsLook = (d) => Number(Boolean(d.open || d.locked === false || d.tamper || d.lowBattery));
+function alarmDevices(y) {
+  const list = [...(y.sensors ?? [])].sort((a, b) => (sensorNeedsLook(b) - sensorNeedsLook(a)) || a.name.localeCompare(b.name));
+  return h('div', { class: 'card hall-devices' }, h('h3', {}, 'Alarm devices'),
+    list.length ? h('ul', { class: 'sensor-list' }, list.map((d) => {
+      const [text, tone] = sensorState(d);
+      return h('li', { class: tone },
+        h('span', { class: 'sensor-ico' }, icon(SENSOR_ICON[d.kind] ?? 'shield')),
+        h('b', {}, d.name),
+        h('span', { class: 'sensor-flags' },
+          d.tamper ? h('span', { class: 'flag bad' }, 'Tamper') : null,
+          d.lowBattery ? h('span', { class: 'flag warn' }, 'Low battery') : null,
+          h('span', { class: 'sensor-state' }, text)));
+    })) : h('p', { class: 'muted' }, y.at ? 'No devices reported by the alarm.' : 'Checking the alarm…'));
+}
+function hallRingCard(d, events) {
+  const slot = Math.floor(Date.now() / 120_000);
+  const last = events.find((e) => e.device === d.name && (d.type !== 'doorbell' || e.kind === 'ding'));
+  const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60_000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : ringWhen(iso); };
+  return h('div', { class: 'card wall-door' },
+    h('div', { class: 'cam-shot' }, h('img', { src: `/api/ring/snapshot/${d.id}?v=${slot}`, alt: `Latest picture from ${d.name}`, onerror: (e) => e.currentTarget.remove() }),
+      h('span', { class: 'cam-ico' }, icon(d.type === 'doorbell' ? 'bell' : 'camera'))),
+    h('div', { class: 'cam-body' }, h('div', { class: 'tv-text' }, h('b', {}, d.name),
+      h('small', {}, last ? `${d.type === 'doorbell' ? 'Rang' : RING_EVENT[last.kind] ?? 'Activity'} ${ago(last.at)}` : d.type === 'doorbell' ? 'No rings today' : 'No recent activity'))));
+}
+
+// Open-Meteo weather codes (WMO) -> icon and words
+function weatherLook(code, day = true) {
+  if (code === 0) return [day ? 'sun' : 'moon', 'Clear'];
+  if (code === 1 || code === 2) return [day ? 'cloudsun' : 'cloud', 'Partly cloudy'];
+  if (code === 3) return ['cloud', 'Cloudy'];
+  if (code === 45 || code === 48) return ['fog', 'Fog'];
+  if (code >= 51 && code <= 57) return ['rain', 'Drizzle'];
+  if (code >= 61 && code <= 67) return ['rain', 'Rain'];
+  if (code >= 71 && code <= 77) return ['snow', 'Snow'];
+  if (code >= 80 && code <= 82) return ['rain', 'Showers'];
+  if (code === 85 || code === 86) return ['snow', 'Snow showers'];
+  if (code >= 95) return ['storm', 'Thunderstorms'];
+  return ['cloud', ''];
+}
+const deg = (v) => (v == null ? '–' : `${Math.round(v)}°`);
+function hallWeather(w) {
+  if (!w?.location) return h('button', { class: 'chip', onclick: (e) => { e.stopPropagation(); weatherSheet(w); } }, icon('cloudsun'), 'Add weather');
+  const today = w.days?.[0];
+  const [ico, words] = weatherLook(w.current?.code, w.current?.day);
+  const day = (d) => h('div', { class: 'wx-day' }, h('span', {}, new Date(d.date).toLocaleDateString('en-GB', { weekday: 'short' })),
+    icon(weatherLook(d.code)[0]), h('span', { class: 'num' }, `${deg(d.max)} ${deg(d.min)}`));
+  return h('button', { class: 'hall-weather', 'aria-label': `Weather for ${w.location.name}. Tap to change the place`, onclick: (e) => { e.stopPropagation(); weatherSheet(w); } },
+    w.current ? h('div', { class: 'wx-now' }, icon(ico), h('b', { class: 'num' }, deg(w.current.temp)),
+      h('div', { class: 'wx-text' }, h('span', {}, [words, today ? `H ${deg(today.max)} L ${deg(today.min)}` : null].filter(Boolean).join(' · ')),
+        h('small', {}, [w.location.name, today?.rain != null ? `rain ${today.rain}%` : null].filter(Boolean).join(' · '))))
+      : h('div', { class: 'wx-now' }, icon('cloud'), h('div', { class: 'wx-text' }, h('span', {}, w.error ?? 'Getting the weather…'), h('small', {}, w.location.name))),
+    (w.days ?? []).length > 1 ? h('div', { class: 'wx-days' }, w.days.slice(1, 4).map(day)) : null);
+}
+function weatherSheet(w) {
+  const sheet = $('#sheet');
+  const q = h('input', { type: 'search', placeholder: 'Town or city', 'aria-label': 'Town or city', value: w?.location?.name ?? '' });
+  const list = h('div', { class: 'wx-results' });
+  const msg = h('p', { class: 'muted', role: 'status' });
+  const find = async () => {
+    msg.textContent = 'Searching…';
+    list.replaceChildren();
+    try {
+      const places = await api('GET', `/api/weather/search?q=${encodeURIComponent(q.value)}`);
+      msg.textContent = places.length ? '' : 'No places found. Try another spelling or a nearby town.';
+      list.replaceChildren(...places.map((p) => h('button', { class: 'btn wx-place', onclick: async () => {
+        try { await api('POST', '/api/weather/location', p); sheet.close(); toast(`Weather for ${p.name}`); refresh(); } catch (e) { msg.textContent = e.message; }
+      } }, h('b', {}, p.name), h('small', {}, p.area))));
+    } catch (e) { msg.textContent = e.message; }
+  };
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') find(); });
+  sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top' },
+    h('h2', {}, 'Weather location'),
+    h('div', { class: 'wx-search' }, q, h('button', { class: 'btn primary', onclick: find }, icon('search'), 'Search')),
+    msg, list, h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => sheet.close() }, 'Close')))));
+  sheet.showModal();
+  q.focus();
+}
+
+function renderHallway(main) {
+  if (S.dragging) return;
+  const s = S.state ?? {};
+  const ringCams = (s.ring?.devices ?? []).filter((d) => d.type !== 'chime').sort((a, b) => Number(b.type === 'doorbell') - Number(a.type === 'doorbell'));
+  const t = s.hive?.thermostats?.[0];
+  const rooms = s.lights?.paired ? (s.lights.rooms ?? []).filter((r) => r.type === 'Room') : [];
+  const lit = rooms.filter((r) => r.on);
+  const down = (s.network?.targets ?? []).filter((x) => x.up === false);
+  const y = s.yale;
+
+  main.replaceChildren(h('div', { class: 'wall hall', onclick: () => keepAwake(true) },
+    h('header', { class: 'hall-top' },
+      h('div', { class: 'wall-clock' }, wallClock()),
+      hallWeather(s.weather),
+      h('div', { class: 'wall-status' },
+        y?.signedIn && y.mode ? h('span', { class: `chip alarm-chip ${y.mode}` }, icon('shield'), ALARM_STATE[y.mode]) : null,
+        h('span', { class: 'chip' }, h('span', { class: `dot ${down.length ? 'bad' : 'ok'}` }), down.length ? `${down[0].name} down` : 'Internet OK'),
+        h('button', { class: 'icon-btn', 'aria-label': 'Full screen', title: 'Full screen', onclick: (e) => {
+          e.stopPropagation();
+          document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {});
+        } }, icon('expand')),
+        h('a', { class: 'icon-btn', href: '#/home', 'aria-label': 'Leave the hallway screen', title: 'Leave the hallway screen' }, icon('x')))),
+    h('div', { class: 'hall-grid' },
+      y?.signedIn ? h('section', { class: 'hall-col', 'aria-label': 'Alarm' }, alarmCard(y), alarmDevices(y)) : null,
+      h('section', { class: 'hall-col', 'aria-label': 'Heating and lights' },
+        t ? thermostatCard(t, s.hive.boost) : null,
+        rooms.length ? h('div', { class: 'card wall-lights' },
+          h('div', { class: 'hall-head' }, h('h3', {}, 'Lights'),
+            lit.length ? h('button', { class: 'btn', onclick: () => lit.forEach((r) => hueSet('group', r.id, { on: false })) }, icon('power'), 'All off') : null),
+          h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
+            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null),
+      ringCams.length || (s.cameras ?? []).length ? h('section', { class: 'hall-col', 'aria-label': 'Cameras' },
+        ringCams.map((d) => hallRingCard(d, s.ring?.events ?? [])),
+        (s.cameras ?? []).map(cameraCard)) : null)));
   keepAwake(true);
 }
 
@@ -1841,14 +1975,15 @@ async function renderSettings(main) {
 }
 
 // --- render loop -----------------------------------------------------------------------------------------------------------
-const RENDER = { cameras: renderCameras, wall: renderWall, routines: renderRoutines, heating: renderHeating, home: renderHome, guide: renderGuide, remote: renderRemote, apps: renderApps, lights: renderLights, network: renderNetwork, settings: renderSettings };
-const LIVE = new Set(['home', 'remote', 'apps', 'heating', 'lights', 'network', 'routines', 'wall', 'cameras']); // pages re-rendered by polling
+const RENDER = { cameras: renderCameras, wall: renderWall, hallway: renderHallway, routines: renderRoutines, heating: renderHeating, home: renderHome, guide: renderGuide, remote: renderRemote, apps: renderApps, lights: renderLights, network: renderNetwork, settings: renderSettings };
+const LIVE = new Set(['home', 'remote', 'apps', 'heating', 'lights', 'network', 'routines', 'wall', 'hallway', 'cameras']); // pages re-rendered by polling
 
 function rerender() {
   const page = currentPage();
   markNav(page);
-  document.body.classList.toggle('wall-mode', page === 'wall');
-  if (page !== 'wall') keepAwake(false);
+  const kiosk = page === 'wall' || page === 'hallway';
+  document.body.classList.toggle('wall-mode', kiosk);
+  if (!kiosk) keepAwake(false);
   const main = $('#main');
   Promise.resolve(RENDER[page](main)).catch((e) => toast(e.message));
 }

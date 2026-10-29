@@ -605,6 +605,56 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .pin-key:active { transform: scale(.96); }
 .pin-key[aria-label="Clear PIN"] { font-size: .9rem; font-weight: 550; color: var(--muted); }
 
+/* ---------- hallway screen: alarm | heating + lights | cameras ---------- */
+.hall-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 24px; }
+.hall .wall-clock b { font-size: clamp(3rem, 6vw, 4.5rem); }
+.hall-weather { display: flex; align-items: center; gap: 22px; justify-self: center; padding: 10px 16px; border-radius: 18px; border: 1px solid transparent; background: none; color: inherit; cursor: pointer; text-align: left; }
+.hall-weather:hover { border-color: var(--line); background: var(--surface); }
+.wx-now { display: flex; align-items: center; gap: 12px; }
+.wx-now > svg { width: 44px; height: 44px; color: var(--lamp); }
+.wx-now b { font-family: var(--font-display); font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.wx-text { display: grid; }
+.wx-text span { font-weight: 600; }
+.wx-text small { color: var(--muted); }
+.wx-days { display: flex; gap: 16px; padding-left: 20px; border-left: 1px solid var(--line); }
+.wx-day { display: grid; justify-items: center; gap: 2px; font-size: .85rem; color: var(--text-2); }
+.wx-day svg { width: 22px; height: 22px; color: var(--muted); }
+.wx-search { display: flex; gap: 8px; }
+.wx-search input { flex: 1; min-width: 0; }
+.wx-results { display: grid; gap: 8px; width: 100%; }
+.wx-place { justify-content: flex-start; text-align: left; display: grid; gap: 0; }
+.wx-place small { color: var(--muted); font-weight: 500; }
+.hall-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+.hall-col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.hall-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hall-head .btn { padding: 7px 12px; }
+.hall .thermo { gap: 10px; }
+.hall .dial { width: min(100%, 210px); }
+.hall .wall-rooms { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hall .wall-room { min-height: 84px; padding: 12px; }
+.hall-devices h3 { font-size: 1.05rem; margin-bottom: 6px; }
+.sensor-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.sensor-list li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; }
+.sensor-list li + li { border-top: 1px solid var(--line); }
+.sensor-list b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sensor-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
+.sensor-ico svg { width: 18px; height: 18px; }
+.sensor-flags { display: flex; gap: 6px; align-items: center; }
+.sensor-state { color: var(--muted); font-size: .92rem; min-width: 4.5em; text-align: right; }
+.sensor-list li.warn .sensor-ico { background: var(--warn); color: var(--on-lamp); }
+.sensor-list li.warn .sensor-state { color: var(--warn); font-weight: 650; }
+.flag { font-size: .75rem; font-weight: 650; padding: 2px 8px; border-radius: 999px; }
+.flag.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.flag.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.wall-status .alarm-chip svg { color: inherit; }
+.alarm-chip.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
+.alarm-chip.part { background: var(--warn); border-color: var(--warn); color: var(--on-lamp); }
+.alarm-chip.disarmed { color: var(--ok); }
+@media (max-width: 1100px) {
+  .hall-top { grid-template-columns: auto auto; }
+  .hall-weather { grid-column: 1 / -1; grid-row: 2; justify-self: start; padding-left: 0; }
+}
+
 /* ---------- heating: the thermostat dial ---------- */
 .thermo-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 .thermo { display: grid; gap: 16px; }

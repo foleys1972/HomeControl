@@ -97,11 +97,19 @@ const KIND = { 'device_type.door_contact': 'door', 'device_type.pir': 'motion', 
 function sensor(d) {
   const status = `${d.status1 ?? ''} ${d.status2 ?? ''} ${d.status_fault ?? ''}`;
   const kind = KIND[d.type] ?? 'other';
+  // locks: the bridge's status bits when present (16 = door closed, 1 = locked), as yale-smart-alarm-client reads them
+  let locked = null;
+  if (kind === 'lock') {
+    const bits = d.minigw_lock_status ? parseInt(d.minigw_lock_status, 16) : NaN;
+    locked = Number.isNaN(bits) ? (/device_status\.lock/.test(status) ? true : /device_status\.unlock/.test(status) ? false : null)
+      : (bits & 16) !== 16 ? 'dooropen' : (bits & 1) === 1;
+  }
   return {
     id: String(d.device_id ?? d.address ?? d.name),
     name: String(d.name || 'Sensor'),
     kind,
-    open: kind === 'door' ? (/dc_open/.test(status) ? true : /dc_close/.test(status) ? false : null) : null,
+    open: kind === 'door' ? (/dc_open/.test(status) ? true : /dc_close/.test(status) ? false : null) : locked === 'dooropen' ? true : null,
+    locked: locked === 'dooropen' ? false : locked,
     lowBattery: /low_battery|battery_low/.test(status),
     tamper: /tamper/.test(status),
   };

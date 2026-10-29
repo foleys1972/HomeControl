@@ -17,6 +17,7 @@ import * as hive from './hive.js';
 import * as smarttv from './smarttv.js';
 import * as ring from './ring.js';
 import * as yale from './yale.js';
+import * as weather from './weather.js';
 import * as routines from './routines.js';
 import * as cameras from './cameras.js';
 
@@ -168,7 +169,7 @@ async function api(req, res, url) {
   // --- authenticated -------------------------------------------------------------------------
   if (route === 'GET /api/state') {
     const [lights, tv] = await Promise.all([hue.summary().catch((e) => ({ error: e.message })), sky.summary().catch(() => [])]);
-    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
+    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), weather: weather.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
   }
   if (route === 'POST /api/hue/pair') return send(res, 200, await hue.pair().catch((e) => ({ ok: false, error: `Bridge not answering (${e.name})` })));
 
@@ -389,6 +390,18 @@ async function api(req, res, url) {
     }
   }
 
+  // --- weather (Open-Meteo, location picked on the hallway screen) ------------------------------------
+  if (route === 'GET /api/weather/search') {
+    try { return send(res, 200, await weather.search(url.searchParams.get('q'))); } catch (e) { return send(res, 502, { error: e.message }); }
+  }
+  if (route === 'POST /api/weather/location') {
+    try {
+      const r = await weather.setLocation(await readJson(req));
+      console.log(new Date().toISOString(), `weather: location set to ${r.location.name}`);
+      return send(res, 200, r);
+    } catch (e) { return send(res, 400, { error: e.message }); }
+  }
+
   if (route === 'GET /api/settings') return send(res, 200, publicSettings());
   if (route === 'POST /api/settings') {
     const body = await readJson(req);
@@ -423,6 +436,7 @@ android.start();
 smarttv.start();
 ring.start();
 yale.start();
+weather.start();
 routines.start();
 cameras.start();
 hive.start();

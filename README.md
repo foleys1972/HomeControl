@@ -12,7 +12,9 @@ Local-only home dashboard, plain JavaScript with no dependencies:
 - **Routines** run by the server (lights, heating, TVs, arming the alarm): daily ("porch light on at 20:00") or one-off; from the TV Guide, "Set up for this
   show" dims the lights, boosts the heating and switches the Sky box just before a programme starts.
 - **Any phone or tablet** on the home network: Add to Home Screen installs it like an app, and `/#/wall` is an
-  always-on wall-tablet dashboard (clock, doorbell, alarm, heating, lights, TV, upcoming routines).
+  always-on wall-tablet dashboard (clock, doorbell, alarm, heating, lights, TV, upcoming routines). The Hallway tab
+  (`/#/hallway`) is a TV-free panel: alarm and its devices, heating, lights, cameras and weather
+  ([Open-Meteo](https://open-meteo.com), free for non-commercial use; the place is picked on the screen).
 
 Hive, Ring and Yale are reached through the same (unofficial) cloud APIs their own apps use; they can change without
 notice. The Yale calls follow [yale-smart-alarm-client](https://github.com/domwillcode/yale-smart-alarm-client)
