@@ -71,7 +71,7 @@ function setTheme(t) {
   if (t === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   const effective = t === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : t;
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', effective === 'light' ? '#f4f5f8' : '#0b0d12'));
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', effective === 'light' ? '#f2f3f5' : '#0e0f12'));
   renderThemeButtons();
 }
 function renderThemeButtons() {
@@ -116,7 +116,15 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  // longer messages (usually errors) stay up long enough to read
+  toastTimer = setTimeout(() => { t.hidden = true; }, Math.min(8000, Math.max(3200, msg.length * 70)));
+}
+
+// every pop-up uses the one <dialog>; name it after its heading so screen readers announce what opened
+function openSheet(sheet) {
+  const title = sheet.querySelector('h2, .tv-text b');
+  if (title) sheet.setAttribute('aria-label', title.textContent); else sheet.removeAttribute('aria-label');
+  sheet.showModal();
 }
 
 // --- formatting -----------------------------------------------------------------------------------
@@ -208,7 +216,7 @@ function chooseBox() {
       h('span', { class: `dot ${boxDot(b)}` }),
       h('span', { class: 'bp-text' }, h('b', {}, b.name), h('small', {}, boxStatusText(b))))),
     h('button', { class: 'btn', onclick: () => sheet.close() }, 'Cancel'))));
-  sheet.showModal();
+  openSheet(sheet);
 }
 $('#box-chip').addEventListener('click', chooseBox);
 $('#theme-btn').addEventListener('click', cycleTheme);
@@ -349,7 +357,7 @@ function openProgramme(sid, ev) {
         !airing ? h('span', { class: 'muted' }, ev.st > nowSec() ? `Starts in ${mins(ev.st - nowSec())}` : 'Already shown') : null,
         ev.st - 90 > nowSec() ? h('button', { class: 'btn primary', onclick: () => { close(); showRoutine(sid, ev); } }, icon('clock'), 'Set up for this show') : null,
         favBtn))));
-  sheet.showModal();
+  openSheet(sheet);
 }
 $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') e.target.close(); });
 
@@ -572,7 +580,7 @@ function pinSheet(y) {
     h('div', { class: 'pinpad' }, [1, 2, 3, 4, 5, 6, 7, 8, 9].map(digit), key('Clear', () => { pin = ''; }, 'Clear PIN'), digit(0), key('⌫', () => { pin = pin.slice(0, -1); }, 'Delete last digit')),
     msg, h('div', { class: 'actions' }, ok, h('button', { class: 'btn block', onclick: () => sheet.close() }, 'Cancel')))));
   show();
-  sheet.showModal();
+  openSheet(sheet);
 }
 function yaleSettingsCard() {
   const y = S.state?.yale ?? {};
@@ -827,7 +835,7 @@ function routineEditor(r = null, preset = null) {
       tvs.length ? h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'tv' }) }, icon('tv'), 'TV') : null),
     msg,
     h('div', { class: 'actions' }, save, h('button', { type: 'button', class: 'btn', onclick: () => sheet.close() }, 'Cancel')))));
-  sheet.showModal();
+  openSheet(sheet);
   if (!r) name.focus();
 }
 
@@ -994,7 +1002,7 @@ function weatherSheet(w) {
     h('h2', {}, 'Weather location'),
     h('div', { class: 'wx-search' }, q, h('button', { class: 'btn primary', onclick: find }, icon('search'), 'Search')),
     msg, list, h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => sheet.close() }, 'Close')))));
-  sheet.showModal();
+  openSheet(sheet);
   q.focus();
 }
 
@@ -1049,7 +1057,7 @@ function cameraLive(cam) {
     h('div', { class: 'sheet-body' }, h('div', { class: 'tv-text' }, h('b', {}, cam.name), status), cam.ptz ? ptzPad(cam) : null)));
   // closing the sheet drops the connection, which stops the server's live feed (and any movement)
   sheet.addEventListener('close', () => { img.src = ''; img.remove(); if (cam.ptz) api('POST', `/api/cameras/${cam.id}/ptz`, { stop: true }).catch(() => {}); }, { once: true });
-  sheet.showModal();
+  openSheet(sheet);
 }
 // Hold an arrow to move; the app repeats the move while held and the server stops the camera if that stops.
 function ptzPad(cam) {
@@ -1148,7 +1156,7 @@ async function renderHome(main) {
     h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
     s?.lights?.paired && s.lights.online
       ? h('div', { class: 'quick-lights' }, s.lights.rooms.filter((r) => r.type === 'Room').map((r) =>
-        h('button', { class: `light-chip ${r.on ? 'on' : ''}`, onclick: () => hueSet('group', r.id, { on: !r.on }) }, icon('bulb'), r.name)))
+        h('button', { class: `light-chip ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) }, icon('bulb'), r.name)))
       : h('div', { class: 'card muted' }, s?.lights?.paired ? 'Hue bridge not answering.' : 'Pair the Hue bridge in Settings to control lights here.'),
   );
 
@@ -1802,7 +1810,7 @@ function confirmSheet(title, text, okLabel) {
       h('h2', {}, title), h('p', { class: 'syn' }, text),
       h('div', { class: 'actions' }, h('button', { class: 'btn primary danger', onclick: () => done(true) }, okLabel), h('button', { class: 'btn', onclick: () => done(false) }, 'Cancel')))));
     sheet.addEventListener('close', () => resolve(false), { once: true });
-    sheet.showModal();
+    openSheet(sheet);
   });
 }
 
