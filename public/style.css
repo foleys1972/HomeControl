@@ -146,9 +146,9 @@ svg.i.fill { fill: currentColor; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
 .page-head h1 { font-size: 2.3rem; font-weight: 750; letter-spacing: -0.03em; line-height: 1.15; }
 .page-head p { margin: 2px 0 0; color: var(--muted); }
-.section-title { display: flex; align-items: center; justify-content: space-between; margin: 30px 0 12px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 30px 0 12px; }
 .section-title h2 { font-size: 1.12rem; font-weight: 700; }
-.section-title a { color: var(--accent); font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); transition: background .15s; }
+.section-title a { color: var(--accent); font-size: .85rem; font-weight: 600; padding: 5px 12px; border-radius: 999px; white-space: nowrap; flex: none; background: var(--accent-soft); transition: background .15s; }
 .section-title a:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 
 /* ---------- controls ---------- */
