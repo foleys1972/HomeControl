@@ -1406,7 +1406,9 @@ function renderRemote(main) {
   if (activeBox()?.android) return renderAndroidRemote(main, activeBox());
   const box = activeBox();
   const id = box?.id;
-  const key = (k, label, cls = '') => h('button', { class: `rkey ${cls}`, 'aria-label': k, onclick: () => skyKey(id, k) }, label);
+  // laid out like the real Sky Q remote; a short buzz on phones stands in for the click of a real key
+  const press = (k) => { try { navigator.vibrate?.(8); } catch {} skyKey(id, k); };
+  const key = (k, label, cls = '', aria = k) => h('button', { type: 'button', class: `skey ${cls}`, 'aria-label': aria, onclick: () => press(k) }, label);
   const favs = S.channels.filter((c) => c.fav);
   const onNow = S.favNow.data;
   const t = nowSec();
@@ -1415,21 +1417,22 @@ function renderRemote(main) {
     pageHead('Remote', 'Everything your Sky remote does'),
     boxBanner(box),
     h('div', { class: 'remote-layout' },
-      h('div', { class: 'remote' },
-        h('div', { class: 'row3' }, key('power', icon('power'), 'power'), key('home', 'Home'), key('i', icon('info'))),
-        h('div', { class: 'dpad' },
-          h('button', { class: 'up', 'aria-label': 'Up', onclick: () => skyKey(id, 'up') }, icon('up')),
-          h('button', { class: 'left', 'aria-label': 'Left', onclick: () => skyKey(id, 'left') }, icon('left')),
-          h('button', { class: 'ok', 'aria-label': 'Select', onclick: () => skyKey(id, 'select') }, 'OK'),
-          h('button', { class: 'right', 'aria-label': 'Right', onclick: () => skyKey(id, 'right') }, icon('right')),
-          h('button', { class: 'down', 'aria-label': 'Down', onclick: () => skyKey(id, 'down') }, icon('down'))),
-        h('div', { class: 'row3' }, key('backup', icon('back')), key('channelup', 'CH +'), key('search', icon('search'))),
-        h('div', { class: 'row3' }, key('rewind', icon('rewind', 'fill')), key('channeldown', 'CH −'), key('fastforward', icon('ff', 'fill'))),
-        h('div', { class: 'row3' }, key('play', icon('play', 'fill')), key('pause', icon('pause', 'fill')), key('record', icon('record', 'fill'), 'power')),
-        h('div', { class: 'row3' }, ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => key(d, d))),
-        h('div', { class: 'row3' }, key('sky', 'Sky'), key('0', '0'), key('stop', icon('stop', 'fill'))),
-        h('div', { class: 'colors' }, [['red', '#ef4444'], ['green', '#22c55e'], ['yellow', '#facc15'], ['blue', '#3b82f6']].map(([k, c]) =>
-          h('button', { 'aria-label': k, style: { background: c }, onclick: () => skyKey(id, k) })))),
+      h('div', { class: 'skyr', role: 'group', 'aria-label': `Sky remote for ${box?.name ?? 'Sky'}` },
+        h('div', { class: 'skyr-top' }, key('sky', 'sky', 'brand', 'Sky'), key('power', icon('power'), 'power', 'Standby or on')),
+        h('div', { class: 'skyr-ring' },
+          key('up', icon('up'), 'up', 'Up'), key('left', icon('left'), 'left', 'Left'), key('select', '', 'select', 'Select'),
+          key('right', icon('right'), 'right', 'Right'), key('down', icon('down'), 'down', 'Down')),
+        h('div', { class: 'skyr-row' }, key('backup', icon('back'), '', 'Back'), key('home', icon('home'), '', 'Home'), key('i', icon('info'), '', 'Info')),
+        h('div', { class: 'skyr-row' }, key('rewind', icon('rewind', 'fill'), '', 'Rewind'),
+          key(box?.state === 'PLAYING' ? 'pause' : 'play', h('span', { class: 'pp' }, icon('play', 'fill'), icon('pause', 'fill')), '', 'Play or pause'),
+          key('fastforward', icon('ff', 'fill'), '', 'Fast forward')),
+        h('div', { class: 'skyr-mid' },
+          key('record', icon('record', 'fill'), 'rec', 'Record'), key('stop', icon('stop', 'fill'), '', 'Stop'),
+          key('search', icon('search'), '', 'Search'), key('help', '?', 'help', 'Help'),
+          h('div', { class: 'skyr-rocker', role: 'group', 'aria-label': 'Channel' },
+            key('channelup', icon('up'), '', 'Channel up'), h('span', { 'aria-hidden': 'true' }, 'CH'), key('channeldown', icon('down'), '', 'Channel down'))),
+        h('div', { class: 'skyr-pad' }, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((d) => key(d, d, d === '0' ? 'zero' : 'num'))),
+        h('div', { class: 'skyr-colours' }, ['red', 'green', 'yellow', 'blue'].map((k) => key(k, '', k, k[0].toUpperCase() + k.slice(1))))),
       h('div', {},
         h('div', { class: 'section-title first' }, h('h2', {}, 'Favourite channels'), h('a', { href: '#/guide' }, 'Edit in guide →')),
         favs.length
