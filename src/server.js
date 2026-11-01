@@ -115,19 +115,21 @@ const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 function applySettings(body) {
   store.update((c) => {
     if (body.hue?.ip && IP_RE.test(body.hue.ip) && body.hue.ip !== c.hue.ip) { c.hue.ip = body.hue.ip; c.hue.username = null; }
+    // two boxes on one address would send both remotes to the same box, so a clashing address is ignored
+    const ipTaken = (ip, id) => [...c.sky, ...(c.android ?? []), ...(c.smarttv ?? [])].some((d) => d.ip === ip && d.id !== id);
     for (const s of body.sky ?? []) {
       const box = c.sky.find((b) => b.id === s.id);
-      if (box && IP_RE.test(s.ip)) box.ip = s.ip;
+      if (box && IP_RE.test(s.ip) && !ipTaken(s.ip, box.id)) box.ip = s.ip;
       if (box && typeof s.name === 'string' && s.name.trim()) box.name = s.name.trim().slice(0, 40);
     }
     for (const s of body.android ?? []) {
       const d = c.android.find((x) => x.id === s.id);
-      if (d && IP_RE.test(s.ip)) d.ip = s.ip;
+      if (d && IP_RE.test(s.ip) && !ipTaken(s.ip, d.id)) d.ip = s.ip;
       if (d && typeof s.name === 'string' && s.name.trim()) d.name = s.name.trim().slice(0, 40);
     }
     for (const s of body.smarttv ?? []) {
       const d = (c.smarttv ?? []).find((x) => x.id === s.id);
-      if (d && IP_RE.test(s.ip)) d.ip = s.ip;
+      if (d && IP_RE.test(s.ip) && !ipTaken(s.ip, d.id)) d.ip = s.ip;
       if (d && typeof s.name === 'string' && s.name.trim()) d.name = s.name.trim().slice(0, 40);
     }
     for (const s of body.switches ?? []) {

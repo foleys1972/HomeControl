@@ -20,8 +20,11 @@ async function rest(ip, p) {
 // --- UPnP SkyPlay control URL (found once per box) ----------------------------------------
 const playUrl = new Map();
 
+// A main box lists SkyPlay twice: once on its media server (shares recordings with Minis; answers
+// GetMediaInfo with HTTP 500) and once on its renderer, which sits beside SkyRC and is what the TV shows.
 async function skyPlayControl(ip) {
   if (playUrl.has(ip)) return playUrl.get(ip);
+  let fallback = null;
   for (let n = 0; n < 4; n++) {
     let xml;
     try {
@@ -30,13 +33,14 @@ async function skyPlayControl(ip) {
     } catch {
       continue;
     }
-    for (const m of xml.matchAll(/<serviceType>([^<]*SkyPlay[^<]*)<\/serviceType>[\s\S]*?<controlURL>([^<]+)<\/controlURL>/g)) {
-      const found = { type: m[1], url: `http://${ip}:49153${m[2]}` };
-      playUrl.set(ip, found);
-      return found;
-    }
+    const m = /<serviceType>([^<]*SkyPlay[^<]*)<\/serviceType>[\s\S]*?<controlURL>([^<]+)<\/controlURL>/.exec(xml);
+    if (!m) continue;
+    const found = { type: m[1], url: `http://${ip}:49153${m[2]}` };
+    if (xml.includes(':service:SkyRC:')) { playUrl.set(ip, found); return found; }
+    fallback ??= found;
   }
-  return null;
+  if (fallback) playUrl.set(ip, fallback);
+  return fallback;
 }
 
 async function soap(ip, action) {
