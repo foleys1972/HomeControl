@@ -53,6 +53,8 @@ const STATIC = {
   '/icon-maskable-512.png': ['icon-maskable-512.png', 'image/png'],
   '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png'],
   '/keepawake.mp4': ['keepawake.mp4', 'video/mp4'],
+  // Plus Jakarta Sans (SIL OFL 1.1; licence in public/fonts/OFL.txt), served locally so the app needs no internet
+  '/fonts/plus-jakarta-sans.woff2': ['fonts/plus-jakarta-sans.woff2', 'font/woff2'],
 };
 
 const SECURITY_HEADERS = {

@@ -1,27 +1,26 @@
-/* Home Control — glass panels over a soft colour wash: near-black / frosted white, blue-violet for action, amber for lamps, orange for heat. */
+/* Home Control — ui-ux-pro-max "Home Control" system: glassmorphism on slate, green for action, Plus Jakarta Sans, bento Home.
+   Amber stays for lamps and orange for heat. */
 :root {
-  --bg: #07080c;
+  --bg: #0b1120;
   /* panels are translucent so the colour wash behind the page shows through; --surface-solid is for
      anything that must hide what scrolls underneath (sticky guide cells, sheets, dropdowns) */
-  --bg-2: rgb(18 20 28 / 72%);
-  --surface: rgb(255 255 255 / 4.5%);
-  --surface-2: rgb(255 255 255 / 8%);
-  --surface-3: rgb(255 255 255 / 13%);
-  --surface-solid: #121319;
-  --line: rgb(255 255 255 / 8%);
-  --line-2: rgb(255 255 255 / 14%);
-  --wash: radial-gradient(1000px 700px at 0% -10%, rgb(77 124 255 / 18%), transparent 60%),
-    radial-gradient(900px 650px at 100% 0%, rgb(124 77 255 / 14%), transparent 60%),
-    radial-gradient(1100px 800px at 60% 115%, rgb(255 140 60 / 8%), transparent 60%);
-  --accent-grad: linear-gradient(135deg, #3d6cf0, #6246f0);
+  --bg-2: rgb(15 23 42 / 70%);
+  --surface: rgb(30 41 59 / 45%);
+  --surface-2: rgb(148 163 184 / 10%);
+  --surface-3: rgb(148 163 184 / 16%);
+  --surface-solid: #111a2e;
+  --line: rgb(148 163 184 / 14%);
+  --line-2: rgb(148 163 184 / 24%);
+  --wash: radial-gradient(900px 640px at 0% -10%, rgb(34 197 94 / 12%), transparent 60%), radial-gradient(900px 650px at 100% 0%, rgb(56 189 248 / 12%), transparent 60%), radial-gradient(1100px 800px at 60% 115%, rgb(99 102 241 / 12%), transparent 60%);
+  --accent-grad: linear-gradient(135deg, #22c55e, #10b981);
   --blur: blur(20px) saturate(150%);
-  --text: #eff1f4;
-  --text-2: #c4c8cf;
-  --muted: #8b909a;
-  --accent: #4d7cff;
-  --accent-2: #6b92ff;
-  --accent-soft: rgb(77 124 255 / 16%);
-  --on-accent: #fff;
+  --text: #f8fafc;
+  --text-2: #cbd5e1;
+  --muted: #94a3b8;
+  --accent: #4ade80;
+  --accent-2: #86efac;
+  --accent-soft: rgb(34 197 94 / 14%);
+  --on-accent: #0f172a;
   --live: #ff5a5f;
   --ok: #3ccf8e;
   --warn: #f5c445;
@@ -31,8 +30,8 @@
   --on-lamp: #2e1f00;
   --on-heat: #2e0c00;
   /* fills that carry white text need a deeper shade than the same colour used as text on dark */
-  --accent-fill: #3d6cf0;
-  --accent-fill-2: #3560dc;
+  --accent-fill: #22c55e;
+  --accent-fill-2: #16a34a;
   --bad-fill: #d63a3f;
   --live-fill: #d63a3f;
   --lamp-ui: #f7b733; /* amber for switches and stars, which sit on the surface */
@@ -42,32 +41,30 @@
   --shadow: 0 12px 32px rgb(0 0 0 / 40%);
   --card-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 10px 30px rgb(0 0 0 / 22%);
   --sidebar: 240px;
-  --logo-bg: #24272c;
-  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --logo-bg: #1e293b;
+  --font: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   color-scheme: dark;
 }
 /* Light theme: follows the device unless the user picked one (html[data-theme]). */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #eef1f7;
-    --bg-2: rgb(255 255 255 / 62%);
-    --surface: rgb(255 255 255 / 72%);
+    --bg: #eef2f7;
+    --bg-2: rgb(255 255 255 / 64%);
+    --surface: rgb(255 255 255 / 74%);
     --surface-2: rgb(15 23 42 / 5%);
     --surface-3: rgb(15 23 42 / 10%);
     --surface-solid: #ffffff;
-    --wash: radial-gradient(1000px 700px at 0% -10%, rgb(47 95 224 / 16%), transparent 60%),
-      radial-gradient(900px 650px at 100% 0%, rgb(124 77 255 / 12%), transparent 60%),
-      radial-gradient(1100px 800px at 60% 115%, rgb(255 140 60 / 12%), transparent 60%);
-    --accent-grad: linear-gradient(135deg, #2f5fe0, #5b3fe0);
-    --line: rgb(20 25 35 / 9%);
-    --line-2: rgb(20 25 35 / 16%);
-    --text: #16181c;
-    --text-2: #3f444c;
-    --muted: #626772;
-    --accent: #2f5fe0;
-    --accent-2: #234cbd;
-    --accent-soft: rgb(47 95 224 / 11%);
+    --wash: radial-gradient(900px 640px at 0% -10%, rgb(34 197 94 / 14%), transparent 60%), radial-gradient(900px 650px at 100% 0%, rgb(56 189 248 / 14%), transparent 60%), radial-gradient(1100px 800px at 60% 115%, rgb(99 102 241 / 10%), transparent 60%);
+    --accent-grad: linear-gradient(135deg, #15803d, #047857);
+    --line: rgb(15 23 42 / 9%);
+    --line-2: rgb(15 23 42 / 16%);
+    --text: #0f172a;
+    --text-2: #334155;
+    --muted: #5b6678;
+    --accent: #15803d;
+    --accent-2: #166534;
+    --accent-soft: rgb(22 163 74 / 11%);
     --on-accent: #fff;
     --live: #d4373d;
     --ok: #178049;
@@ -79,9 +76,9 @@
     --heat: #f0612f;
     --shadow: 0 1px 2px rgb(20 25 35 / 6%), 0 8px 24px rgb(20 25 35 / 8%);
     --card-shadow: inset 0 1px 0 rgb(255 255 255 / 80%), 0 1px 2px rgb(20 25 35 / 5%), 0 10px 30px rgb(20 25 35 / 7%);
-    --logo-bg: #24272c;
-    --accent-fill: #2f5fe0;
-    --accent-fill-2: #234cbd;
+    --logo-bg: #1e293b;
+    --accent-fill: #15803d;
+    --accent-fill-2: #166534;
     --bad-fill: #c9372c;
     --live-fill: #d4373d;
     --lamp-ui: #a86f00;
@@ -90,24 +87,22 @@
   }
 }
 :root[data-theme="light"] {
-  --bg: #eef1f7;
-  --bg-2: rgb(255 255 255 / 62%);
-  --surface: rgb(255 255 255 / 72%);
+  --bg: #eef2f7;
+  --bg-2: rgb(255 255 255 / 64%);
+  --surface: rgb(255 255 255 / 74%);
   --surface-2: rgb(15 23 42 / 5%);
   --surface-3: rgb(15 23 42 / 10%);
   --surface-solid: #ffffff;
-  --wash: radial-gradient(1000px 700px at 0% -10%, rgb(47 95 224 / 16%), transparent 60%),
-    radial-gradient(900px 650px at 100% 0%, rgb(124 77 255 / 12%), transparent 60%),
-    radial-gradient(1100px 800px at 60% 115%, rgb(255 140 60 / 12%), transparent 60%);
-  --accent-grad: linear-gradient(135deg, #2f5fe0, #5b3fe0);
-  --line: rgb(20 25 35 / 9%);
-  --line-2: rgb(20 25 35 / 16%);
-  --text: #16181c;
-  --text-2: #3f444c;
-  --muted: #626772;
-  --accent: #2f5fe0;
-  --accent-2: #234cbd;
-  --accent-soft: rgb(47 95 224 / 11%);
+  --wash: radial-gradient(900px 640px at 0% -10%, rgb(34 197 94 / 14%), transparent 60%), radial-gradient(900px 650px at 100% 0%, rgb(56 189 248 / 14%), transparent 60%), radial-gradient(1100px 800px at 60% 115%, rgb(99 102 241 / 10%), transparent 60%);
+  --accent-grad: linear-gradient(135deg, #15803d, #047857);
+  --line: rgb(15 23 42 / 9%);
+  --line-2: rgb(15 23 42 / 16%);
+  --text: #0f172a;
+  --text-2: #334155;
+  --muted: #5b6678;
+  --accent: #15803d;
+  --accent-2: #166534;
+  --accent-soft: rgb(22 163 74 / 11%);
   --on-accent: #fff;
   --live: #d4373d;
   --ok: #178049;
@@ -119,9 +114,9 @@
   --heat: #f0612f;
   --shadow: 0 1px 2px rgb(20 25 35 / 6%), 0 8px 24px rgb(20 25 35 / 8%);
   --card-shadow: inset 0 1px 0 rgb(255 255 255 / 80%), 0 1px 2px rgb(20 25 35 / 5%), 0 10px 30px rgb(20 25 35 / 7%);
-  --logo-bg: #24272c;
-  --accent-fill: #2f5fe0;
-  --accent-fill-2: #234cbd;
+  --logo-bg: #1e293b;
+  --accent-fill: #15803d;
+  --accent-fill-2: #166534;
   --bad-fill: #c9372c;
   --live-fill: #d4373d;
   --lamp-ui: #a86f00;
@@ -129,6 +124,9 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] { color-scheme: dark; }
+
+/* Plus Jakarta Sans (SIL OFL), served from this app so it works offline; system fonts until it loads */
+@font-face { font-family: "Plus Jakarta Sans"; src: url("/fonts/plus-jakarta-sans.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -153,7 +151,7 @@ svg.i.fill { fill: currentColor; }
 .nav { display: grid; gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; color: var(--text-2); font-weight: 550; transition: background .15s, color .15s; }
 .nav a:hover { background: var(--surface-2); color: var(--text); }
-.nav a[aria-current="page"] { background: var(--accent-grad); color: #fff; font-weight: 650; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+.nav a[aria-current="page"] { background: var(--accent-grad); color: var(--on-accent); font-weight: 650; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
 .sidebar-foot { margin-top: auto; display: grid; gap: 10px; padding: 0 6px; }
 .clock { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .clock small { display: block; font-size: .8rem; color: var(--muted); font-weight: 500; letter-spacing: 0; }
@@ -793,3 +791,37 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .boost-on svg { width: 20px; height: 20px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- Home: bento grid (one column on phones, in the same order as before) ---------- */
+.bento { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+.bento > section { min-width: 0; display: grid; gap: 12px; align-content: start; }
+.bento .section-title { margin: 0; }
+.bento .status-strip, .bento .heroes { margin: 0; }
+@media (min-width: 1180px) {
+  .bento { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); grid-template-areas: "status status" "tv side" "rail side"; gap: 22px; }
+  .bento .b-status { grid-area: status; }
+  .bento .b-tv { grid-area: tv; }
+  .bento .b-rail { grid-area: rail; }
+  .bento .b-side { grid-area: side; gap: 22px; }
+  .bento .b-side .heroes, .bento .b-side .tv-list, .bento .b-side .cam-grid { grid-template-columns: minmax(0, 1fr); }
+  .bento .b-status .status-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.b-side > div { display: grid; gap: 12px; }
+/* phones and tablets: keep the old reading order — status, alarm, TV, cameras, favourites, lights */
+@media (max-width: 1179px) {
+  .bento .b-side { display: contents; }
+  .b-status { order: 1; } .b-alarm { order: 2; } .b-tv { order: 3; } .b-cams { order: 4; } .b-rail { order: 5; } .b-lights { order: 6; }
+}
+
+/* "live" freshness: green while polls are arriving, amber once the last one is stale */
+.live-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: .8rem; font-weight: 600;
+  color: var(--text-2); background: var(--surface); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.live-chip .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); animation: pulse 2s ease-in-out infinite; }
+.live-chip.stale .dot { background: var(--warn); animation: none; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 0%, transparent); } }
+
+/* page entrance: cards rise in a quick stagger when you change page (not on the 6-second refresh) */
+.main.enter .bento > section, .main.enter > .grid > *, .main.enter > .card, .main.enter > .settings > * { animation: rise .38s cubic-bezier(.2, .9, .3, 1.2) both; }
+.main.enter .bento > section:nth-child(2) { animation-delay: .05s; } .main.enter .bento > section:nth-child(3) { animation-delay: .1s; }
+.main.enter .bento > section:nth-child(4) { animation-delay: .15s; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }

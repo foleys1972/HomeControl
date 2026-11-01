@@ -1118,10 +1118,8 @@ async function renderHome(main) {
   const down = s?.network.targets.filter((t) => t.up === false) ?? [];
   const rail = h('div', { class: 'rail' }, Array.from({ length: 4 }, () => h('div', { class: 'prog-card' }, h('div', { class: 'thumb skeleton' }), h('div', { class: 'body' }, h('b', {}, ' ')))));
 
-  main.replaceChildren(
-    pageHead(greeting, new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })),
-    // at-a-glance strip: heating, lights, internet, switches
-    h('div', { class: 'status-strip' },
+  // bento: TV and favourites on the left, alarm / lights / cameras down the right (one column on phones)
+  const statusStrip = h('div', { class: 'status-strip' },
       heatingTile(s?.hive),
       h('a', { class: 'card stat', href: '#/lights' }, h('div', { class: `ico ${lightsOn.length ? 'on' : ''}` }, icon('bulb')),
         h('div', {}, h('b', {}, lightsOn.length ? `${lightsOn.length} room${lightsOn.length > 1 ? 's' : ''} lit` : 'All lights off'), h('span', {}, lightsOn.map((r) => r.name).join(', ') || 'Philips Hue'))),
@@ -1130,11 +1128,8 @@ async function renderHome(main) {
           h('span', { class: 'num' }, s?.network.targets.map((t) => `${t.name.replace('Internet ', '').replace(/[()]/g, '')} ${t.last ?? '–'} ms`).join(' · ') ?? ''))),
       h('a', { class: 'card stat', href: '#/network' }, h('div', { class: 'ico' }, icon('switch')),
         h('div', {}, h('b', {}, s?.network.ciscoConfigured ? `${s.network.switches.filter((x) => x.ok).length}/${s.network.switches.length} switches OK` : 'Switch monitoring off'),
-          h('span', {}, s?.network.ciscoConfigured ? 'Cisco 3560s' : 'Add credentials in Settings')))),
-    ...alarmSection(s?.yale),
-    h('div', { class: 'heroes' }, (s?.tv ?? []).map(heroCard)),
-    // replaceChildren() doesn't flatten arrays, so spread the optional section
-    ...((s?.android ?? []).length || (s?.smarttv ?? []).length ? [
+          h('span', {}, s?.network.ciscoConfigured ? 'Cisco 3560s' : 'Add credentials in Settings'))));
+  const otherTvs = (s?.android ?? []).length || (s?.smarttv ?? []).length ? [
       h('div', { class: 'section-title' }, h('h2', {}, 'Other TVs'), h('a', { href: '#/apps' }, 'Apps →')),
       h('div', { class: 'tv-list' }, (s.smarttv ?? []).map(smartTvRow), (s.android ?? []).map((d) => {
         const dev = { ...d, android: true };
@@ -1149,15 +1144,28 @@ async function renderHome(main) {
             h('button', { class: 'icon-btn', 'aria-label': 'Remote', title: 'Remote', onclick: go('remote') }, icon('remote')),
             h('button', { class: 'icon-btn', 'aria-label': 'Apps', title: 'Apps', onclick: go('apps') }, icon('apps'))));
       })),
-    ] : []),
-    ...ringSection(s?.ring, s?.cameras ?? []),
-    h('div', { class: 'section-title' }, h('h2', {}, 'On now on your favourites'), h('a', { href: '#/guide' }, 'Full guide →')),
-    rail,
-    h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
-    s?.lights?.paired && s.lights.online
-      ? h('div', { class: 'quick-lights' }, s.lights.rooms.filter((r) => r.type === 'Room').map((r) =>
-        h('button', { class: `light-chip ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) }, icon('bulb'), r.name)))
-      : h('div', { class: 'card muted' }, s?.lights?.paired ? 'Hue bridge not answering.' : 'Pair the Hue bridge in Settings to control lights here.'),
+  ] : [];
+  const alarm = alarmSection(s?.yale);
+  const cams = ringSection(s?.ring, s?.cameras ?? []);
+  main.replaceChildren(
+    pageHead(greeting, new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }), liveChip()),
+    h('div', { class: 'bento' },
+      h('section', { class: 'b-status', 'aria-label': 'At a glance' }, statusStrip),
+      h('section', { class: 'b-tv' },
+        h('div', { class: 'section-title' }, h('h2', {}, 'Watching now'), h('a', { href: '#/remote' }, 'Remote →')),
+        h('div', { class: 'heroes' }, (s?.tv ?? []).map(heroCard)), otherTvs),
+      h('section', { class: 'b-rail' },
+        h('div', { class: 'section-title' }, h('h2', {}, 'On now on your favourites'), h('a', { href: '#/guide' }, 'Full guide →')),
+        rail),
+      h('section', { class: 'b-side' },
+        alarm.length ? h('div', { class: 'b-alarm' }, alarm) : null,
+        h('div', { class: 'b-lights' },
+          h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
+          s?.lights?.paired && s.lights.online
+            ? h('div', { class: 'quick-lights' }, s.lights.rooms.filter((r) => r.type === 'Room').map((r) =>
+              h('button', { class: `light-chip ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) }, icon('bulb'), r.name)))
+            : h('div', { class: 'card muted' }, s?.lights?.paired ? 'Hue bridge not answering.' : 'Pair the Hue bridge in Settings to control lights here.')),
+        cams.length ? h('div', { class: 'b-cams' }, cams) : null)),
   );
 
   // favourites "on now" rail (async)
@@ -2010,6 +2018,7 @@ function updateChrome() {
   document.querySelector('.wall-clock')?.replaceChildren(...wallClock());
   $('#clock').replaceChildren(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
     h('small', {}, now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })));
+  document.querySelector('.live-chip')?.replaceWith(liveChip());
   const n = S.state?.network;
   if (n) {
     const down = n.targets.filter((t) => t.up === false);
@@ -2017,11 +2026,20 @@ function updateChrome() {
   }
 }
 
+// how fresh the data is: "Live" while polls arrive, amber "Last update …" once one is overdue
+function liveChip() {
+  const age = S.updatedAt ? Math.round((Date.now() - S.updatedAt) / 1000) : null;
+  const stale = age == null || age > 20;
+  return h('span', { class: `live-chip ${stale ? 'stale' : ''}`, role: 'status' }, h('span', { class: 'dot' }),
+    age == null ? 'Connecting…' : stale ? `Last update ${age < 120 ? `${age}s` : `${Math.round(age / 60)} min`} ago` : `Live · updated ${age}s ago`);
+}
+
 let pollTimer = null;
 let loadedVersion = null;
 async function refresh() {
   try {
     S.state = await api('GET', '/api/state');
+    S.updatedAt = Date.now();
     // A new version was deployed since this page loaded: reload to pick it up (unless a dialog is open)
     if (S.state.version) {
       if (!loadedVersion) loadedVersion = S.state.version;
@@ -2043,14 +2061,24 @@ async function boot() {
   buildNav();
   setTheme(themePref());
   await Promise.all([refresh(), loadChannels().catch(() => toast('Channel list unavailable — is the Sky box on the network?'))]);
+  enter();
   rerender();
   stopPolling();
   pollTimer = setInterval(() => { if (!document.hidden) refresh(); }, 6000);
 }
 
-window.addEventListener('hashchange', () => { $('#main').scrollTo?.(0, 0); window.scrollTo(0, 0); rerender(); });
+window.addEventListener('hashchange', () => { $('#main').scrollTo?.(0, 0); window.scrollTo(0, 0); enter(); rerender(); });
+// cards rise in when you change page; the class comes off before the next 6-second refresh re-renders
+function enter() {
+  const main = $('#main');
+  main.classList.remove('enter');
+  void main.offsetWidth;
+  main.classList.add('enter');
+  clearTimeout(enter.t);
+  enter.t = setTimeout(() => main.classList.remove('enter'), 900);
+}
 document.addEventListener('visibilitychange', () => { if (!document.hidden && pollTimer) refresh(); });
-setInterval(updateChrome, 15_000);
+setInterval(updateChrome, 5_000);
 
 (async () => {
   const s = await api('GET', '/api/session');
