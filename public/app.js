@@ -1090,6 +1090,7 @@ function renderHallway(main) {
   const lit = rooms.filter((r) => r.on);
   const down = (s.network?.targets ?? []).filter((x) => x.up === false);
   const y = s.yale;
+  const camCount = ringCams.length + (s.cameras ?? []).length;
 
   main.replaceChildren(h('div', { class: 'wall hall', onclick: () => keepAwake(true) },
     h('header', { class: 'hall-top' },
@@ -1108,16 +1109,17 @@ function renderHallway(main) {
       y?.signedIn || t ? h('section', { class: 'hall-col', 'aria-label': 'Alarm and heating' },
         y?.signedIn ? alarmCard(y, { devices: true }) : null,
         t ? thermostatCard(t, s.hive.boost) : null) : null,
-      h('section', { class: 'hall-col', 'aria-label': 'Trains' }, hallTrains(s.trains)),
-      h('section', { class: 'hall-col hall-side', 'aria-label': 'Lights and cameras' },
-        rooms.length ? h('div', { class: 'card wall-lights' },
+      h('section', { class: 'hall-col hall-trains-col', 'aria-label': 'Trains' }, hallTrains(s.trains)),
+      // cameras are what you glance at, so they get the big tile; lights are quick toggles underneath
+      h('section', { class: 'hall-col hall-side', 'aria-label': 'Cameras and lights' },
+        camCount ? h('div', { class: `hall-cams ${camCount === 1 ? 'n1' : camCount === 2 ? 'n2' : 'many'}` },
+          ringCams.map((d) => hallRingCard(d, s.ring?.events ?? [])),
+          (s.cameras ?? []).map(cameraCard)) : null,
+        rooms.length ? h('div', { class: 'card wall-lights hall-lights' },
           h('div', { class: 'hall-head' }, h('h3', {}, 'Lights'),
             lit.length ? h('button', { class: 'btn', onclick: () => lit.forEach((r) => hueSet('group', r.id, { on: false })) }, icon('power'), 'All off') : null),
           h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
-            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null,
-        ringCams.length + (s.cameras ?? []).length ? h('div', { class: `hall-cams ${ringCams.length + (s.cameras ?? []).length > 2 ? 'many' : ''}` },
-          ringCams.map((d) => hallRingCard(d, s.ring?.events ?? [])),
-          (s.cameras ?? []).map(cameraCard)) : null))));
+            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null))));
   keepAwake(true);
   requestAnimationFrame(fitTrains);
 }
