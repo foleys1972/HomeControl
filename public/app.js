@@ -1118,8 +1118,8 @@ function renderHallway(main) {
         rooms.length ? h('div', { class: 'card wall-lights hall-lights' },
           h('div', { class: 'hall-head' }, h('h3', {}, 'Lights'),
             lit.length ? h('button', { class: 'btn', onclick: () => lit.forEach((r) => hueSet('group', r.id, { on: false })) }, icon('power'), 'All off') : null),
-          h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
-            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null))));
+          h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), title: r.name, onclick: () => hueSet('group', r.id, { on: !r.on }) },
+            icon('bulb'), h('span', { class: 'room-text' }, h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off')))))) : null))));
   keepAwake(true);
   requestAnimationFrame(fitTrains);
 }
