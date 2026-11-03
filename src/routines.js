@@ -72,7 +72,7 @@ function cleanAction(a) {
     return out;
   }
   if (a?.type === 'tv') return cleanTv(a);
-  // routines can arm the alarm but never disarm it
+  // routines can arm the alarm but never disarm it; Run now asks for the PIN, scheduled runs don't
   if (a?.type === 'alarm') {
     if (!['arm', 'home'].includes(a.mode)) throw new Error('Pick full arm or part arm');
     return { type: 'alarm', mode: a.mode };
@@ -165,7 +165,7 @@ async function runAction(a) {
     if (what === 'off' && !box.standby) return sky.sendKey(id, 'power');
     return null;
   }
-  if (a.type === 'alarm') return yale.arm(a.mode);
+  if (a.type === 'alarm') return yale.armScheduled(a.mode);
 }
 
 const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`} ${a.on ? (a.bri != null ? `${a.bri}%` : 'on') : 'off'}`
@@ -173,9 +173,10 @@ const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`}
   : a.type === 'alarm' ? (a.mode === 'home' ? 'part arm the alarm' : 'arm the alarm')
   : `${a.name || a.device || a.box}: ${a.do === 'channel' || !a.do ? `channel ${a.channel || a.sid}` : a.do === 'volume' ? `volume ${a.level}` : a.do === 'app' ? `open ${a.app}` : a.do}`);
 
-export async function run(id, why = 'manual') {
+export async function run(id, why = 'manual', pin) {
   const r = list().find((x) => x.id === id);
   if (!r) throw new Error('No such routine');
+  if (why === 'manual' && r.actions.some((a) => a.type === 'alarm')) yale.checkPin(pin); // someone pressed Run now
   const results = [];
   for (const a of r.actions) {
     try { await runAction(a); results.push({ ok: true, what: describe(a) }); } catch (e) { results.push({ ok: false, what: describe(a), error: e.message }); }

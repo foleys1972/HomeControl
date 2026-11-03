@@ -1,7 +1,7 @@
 // Yale Smart Alarm (the "Yale Alarm" app, formerly Yale Smart Living) through the Yale account — cloud only.
 // Uses the same endpoints as the Yale app, as the yale-smart-alarm-client project does (Apache-2.0,
 // github.com/domwillcode/yale-smart-alarm-client): password sign-in once, then the refresh token. The password
-// is never stored. Disarming needs the Home Control alarm PIN (scrypt hash, set with the Yale password).
+// is never stored. Arming and disarming need the Home Control alarm PIN (scrypt hash, set with the Yale password).
 // The API is unofficial and can change.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import * as store from './store.js';
@@ -149,13 +149,20 @@ async function setMode(mode) {
   return { ok: true, mode: MODES[mode] };
 }
 
-/** Full arm ('arm') or part arm ('home'). Arming needs no PIN; disarming does. */
-export function arm(mode) {
-  if (!['arm', 'home'].includes(mode)) throw new Error('Unknown alarm mode');
+/** Full arm ('arm') or part arm ('home'). Needs the alarm PIN, like disarming. */
+export function arm(mode, pin) {
+  if (!['arm', 'home'].includes(mode)) throw refuse(400, 'Unknown alarm mode');
+  checkPin(pin);
   return setMode(mode);
 }
 
-// --- disarm PIN ------------------------------------------------------------------------------------
+/** Arming from a scheduled routine: nobody is there to type the PIN, and arming only makes the house safer. */
+export function armScheduled(mode) {
+  if (!['arm', 'home'].includes(mode)) throw refuse(400, 'Unknown alarm mode');
+  return setMode(mode);
+}
+
+// --- alarm PIN ------------------------------------------------------------------------------------
 const failures = { count: 0, until: 0 };
 const pinHash = (pin, salt) => scryptSync(String(pin), salt, 64).toString('hex');
 const refuse = (status, msg) => Object.assign(new Error(msg), { status });
@@ -186,14 +193,14 @@ export async function setPin(pin, password) {
   return { ok: true };
 }
 
-function checkPin(pin) {
+export function checkPin(pin) {
   const p = cfg().pin;
   if (!p?.hash) throw refuse(400, 'Set an alarm PIN in Settings first');
   if (failures.until > Date.now()) throw refuse(429, `Too many wrong PINs — try again in ${Math.ceil((failures.until - Date.now()) / 60_000)} min`);
   const ok = /^\d{4,8}$/.test(String(pin ?? '')) && timingSafeEqual(Buffer.from(pinHash(pin, p.salt), 'hex'), Buffer.from(p.hash, 'hex'));
   if (ok) { failures.count = 0; return; }
   failures.count += 1;
-  if (failures.count >= 5) { failures.until = Date.now() + 5 * 60_000; failures.count = 0; log('disarm locked for 5 minutes after wrong PINs'); }
+  if (failures.count >= 5) { failures.until = Date.now() + 5 * 60_000; failures.count = 0; log('alarm PIN locked for 5 minutes after wrong PINs'); }
   throw refuse(403, 'Wrong PIN');
 }
 

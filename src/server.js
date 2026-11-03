@@ -18,6 +18,7 @@ import * as smarttv from './smarttv.js';
 import * as ring from './ring.js';
 import * as yale from './yale.js';
 import * as weather from './weather.js';
+import * as trains from './trains.js';
 import * as routines from './routines.js';
 import * as cameras from './cameras.js';
 
@@ -173,7 +174,7 @@ async function api(req, res, url) {
   // --- authenticated -------------------------------------------------------------------------
   if (route === 'GET /api/state') {
     const [lights, tv] = await Promise.all([hue.summary().catch((e) => ({ error: e.message })), sky.summary().catch(() => [])]);
-    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), weather: weather.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
+    return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), weather: weather.summary(), trains: trains.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
   }
   if (route === 'POST /api/hue/pair') return send(res, 200, await hue.pair().catch((e) => ({ ok: false, error: `Bridge not answering (${e.name})` })));
 
@@ -349,9 +350,9 @@ async function api(req, res, url) {
   if ((m = url.pathname.match(/^\/api\/routines\/([\w-]+)(?:\/(run|enable|disable))?$/))) {
     try {
       if (req.method === 'DELETE' && !m[2]) return send(res, 200, routines.remove(m[1]));
-      if (req.method === 'POST' && m[2] === 'run') return send(res, 200, await routines.run(m[1]));
+      if (req.method === 'POST' && m[2] === 'run') return send(res, 200, await routines.run(m[1], 'manual', (await readJson(req)).pin));
       if (req.method === 'POST' && m[2]) return send(res, 200, routines.setEnabled(m[1], m[2] === 'enable'));
-    } catch (e) { return send(res, 400, { error: e.message }); }
+    } catch (e) { return send(res, e.status ?? 400, { error: e.message }); }
   }
 
   // --- Ring (cloud account) -------------------------------------------------------------------------
@@ -384,7 +385,7 @@ async function api(req, res, url) {
     try {
       const r = m[1] === 'signin' ? await yale.signIn(body.email, body.password)
         : m[1] === 'signout' ? yale.signOut()
-          : m[1] === 'arm' ? await yale.arm(String(body.mode))
+          : m[1] === 'arm' ? await yale.arm(String(body.mode), body.pin)
             : m[1] === 'disarm' ? await yale.disarm(body.pin)
               : await yale.setPin(body.pin, body.password); // checks the Yale password, so the wall tablet can't change it
       console.log(new Date().toISOString(), `yale: ${m[1]} ${body.mode ?? ''} ok`);
@@ -403,6 +404,18 @@ async function api(req, res, url) {
     try {
       const r = await weather.setLocation(await readJson(req));
       console.log(new Date().toISOString(), `weather: location set to ${r.location.name}`);
+      return send(res, 200, r);
+    } catch (e) { return send(res, 400, { error: e.message }); }
+  }
+
+  // --- trains (live departures, station picked on the hallway screen) ---------------------------------
+  if (route === 'GET /api/trains/search') {
+    try { return send(res, 200, await trains.search(url.searchParams.get('q'))); } catch (e) { return send(res, 502, { error: e.message }); }
+  }
+  if (route === 'POST /api/trains/station') {
+    try {
+      const r = await trains.setStation(await readJson(req));
+      console.log(new Date().toISOString(), `trains: station set to ${r.station.name}`);
       return send(res, 200, r);
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
@@ -442,6 +455,7 @@ smarttv.start();
 ring.start();
 yale.start();
 weather.start();
+trains.start();
 routines.start();
 cameras.start();
 hive.start();

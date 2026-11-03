@@ -825,3 +825,55 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .main.enter .bento > section:nth-child(2) { animation-delay: .05s; } .main.enter .bento > section:nth-child(3) { animation-delay: .1s; }
 .main.enter .bento > section:nth-child(4) { animation-delay: .15s; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+
+/* hallway: live train departures */
+.hall-trains { display: grid; gap: 10px; align-content: start; }
+.hall-trains h3 { font-size: 1.05rem; }
+.train-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.train-list li { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr) 2.6rem auto; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.train-list li:first-child { border-top: 0; }
+.train-time { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+.train-dest { display: grid; min-width: 0; }
+.train-dest span { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-dest small { color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.train-plat { display: grid; justify-items: center; line-height: 1.1; }
+.train-plat small { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+.train-plat b { font-size: 1.05rem; }
+.train-state { font-size: .85rem; font-weight: 700; text-align: right; white-space: nowrap; }
+.train-state.ok { color: var(--ok); }
+.train-state.warn { color: var(--warn); }
+.train-state.bad { color: var(--bad); }
+.train-list li.cancelled .train-time, .train-list li.cancelled .train-dest span { text-decoration: line-through; color: var(--muted); }
+.train-msg { margin: 0; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); color: var(--text-2); font-size: .82rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.train-upd { color: var(--muted); }
+.train-upd.stale { color: var(--warn); }
+
+/* hallway: one screen, no scrolling, on a tablet or bigger (phones still scroll) */
+.hall-trains .train-list { min-height: 0; overflow: hidden; }
+@media (min-width: 900px) and (min-height: 560px) {
+  .wall.hall { height: calc(100dvh - 48px); min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+  .hall-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: stretch; min-height: 0; }
+  .hall-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .hall-col > .card { flex: none; }
+  .hall-trains { flex: 1 1 auto !important; min-height: 0; display: flex; flex-direction: column; }
+  .hall-trains .train-list { flex: 1 1 auto; }
+  .hall .dial { width: min(100%, 210px, 26dvh); }
+  /* cameras share what's left of their column (two across when there are three or more), name over the picture */
+  .hall-cams { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+  .hall-cams.many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hall-cams > .card { position: relative; min-height: 0; padding: 0; overflow: hidden; display: grid; }
+  .hall-cams .cam-shot { aspect-ratio: auto; height: 100%; min-height: 0; }
+  .hall-cams .cam-body { position: absolute; inset: auto 0 0; padding: 18px 12px 9px; background: linear-gradient(transparent, rgb(2 6 23 / 72%)); pointer-events: none; }
+  .hall-cams .cam-body b { color: #fff; }
+  .hall-cams .cam-body small { color: rgb(255 255 255 / 80%); }
+}
+.alarm-actions .flag { margin-left: 2px; }
+.hall-cams { display: grid; gap: 16px; }
+@media (min-width: 900px) and (max-width: 1100px) and (min-height: 560px) {
+  /* keep the top bar to one line so the columns get the height */
+  .hall-top { grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; }
+  .hall-weather { grid-column: auto; grid-row: auto; justify-self: center; padding-left: 16px; }
+  .hall .wx-days { display: none; }
+  .hall .wall-status { flex-wrap: nowrap; }
+  .hall .dial { width: min(100%, 190px, 24dvh); }
+}

@@ -43,6 +43,7 @@ const ICONS = {
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
   siren: 'M7 18v-6a5 5 0 0 1 10 0v6M5 21h14v-3H5zM12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4',
   vol: 'M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13', mute: 'M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6',
+  train: 'M8 3h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM4 11h16M12 3v8M8 15h.01M16 15h.01M7 19l-2 3M17 19l2 3',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
   switch: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
@@ -537,27 +538,31 @@ function alarmNotes(y) {
     tamper.length ? `Tamper: ${tamper.map((d) => d.name).join(', ')}` : null,
   ].filter(Boolean);
 }
-function alarmCard(y) {
+function alarmCard(y, { devices = false } = {}) {
   const state = y.mode ?? 'unknown';
   const notes = alarmNotes(y);
   const doors = (y.sensors ?? []).filter((d) => d.kind === 'door');
   const sub = y.error ? y.error : !y.at ? 'Checking the alarm…' : notes.length ? notes.join(' · ') : doors.length ? 'All doors and windows closed' : 'Yale alarm';
-  const arm = (mode) => h('button', { class: 'btn', onclick: () => yalePost('arm', { mode }, mode === 'arm' ? 'Alarm armed' : 'Alarm part armed') },
-    icon(mode === 'arm' ? 'shield' : 'moon'), mode === 'arm' ? 'Arm' : 'Part arm');
+  const arm = (mode) => h('button', { class: 'btn', onclick: () => pinSheet(y, {
+    title: mode === 'arm' ? 'Arm the alarm' : 'Part arm the alarm', verb: mode === 'arm' ? 'Arm' : 'Part arm',
+    send: (pin) => api('POST', '/api/yale/arm', { mode, pin }), done: mode === 'arm' ? 'Alarm armed' : 'Alarm part armed',
+  }) }, icon(mode === 'arm' ? 'shield' : 'moon'), mode === 'arm' ? 'Arm' : 'Part arm');
   return h('div', { class: `card alarm ${state}` },
     h('div', { class: 'alarm-head' }, h('div', { class: 'alarm-ico' }, icon('shield')),
       h('div', { class: 'tv-text' }, h('b', {}, ALARM_STATE[state] ?? 'Alarm'), h('small', { class: notes.length || y.error ? 'warn' : '' }, sub))),
     y.at ? h('div', { class: 'alarm-actions' },
       state !== 'armed' ? arm('arm') : null,
       state !== 'part' ? arm('home') : null,
-      state !== 'disarmed' ? h('button', { class: 'btn primary', onclick: () => pinSheet(y) }, icon('power'), 'Disarm') : null) : null);
+      state !== 'disarmed' ? h('button', { class: 'btn primary', onclick: () => pinSheet(y) }, icon('power'), 'Disarm') : null,
+      devices ? devicesButton(y) : null) : null);
 }
 function alarmSection(y) {
   if (!y?.signedIn) return [];
   return [h('div', { class: 'section-title' }, h('h2', {}, 'Alarm')), alarmCard(y)];
 }
-function pinSheet(y) {
-  if (!y.pinSet) { toast('Set an alarm PIN in Settings first'); location.hash = '#/settings'; return; }
+// PIN pad for anything that changes the alarm: arming, disarming, or running a routine that arms it
+function pinSheet(y, { title = 'Disarm the alarm', verb = 'Disarm', send = (pin) => api('POST', '/api/yale/disarm', { pin }), done = 'Alarm disarmed' } = {}) {
+  if (!y?.pinSet) { toast('Set an alarm PIN in Settings first'); location.hash = '#/settings'; return; }
   const sheet = $('#sheet');
   let pin = '';
   const dots = h('div', { class: 'pin-dots', 'aria-live': 'polite' });
@@ -569,14 +574,14 @@ function pinSheet(y) {
   const ok = h('button', { class: 'btn primary block', onclick: async () => {
     if (pin.length < 4) { msg.textContent = 'Enter your alarm PIN'; return; }
     ok.disabled = true;
-    try { await api('POST', '/api/yale/disarm', { pin }); sheet.close(); toast('Alarm disarmed'); refresh(); }
+    try { await send(pin); sheet.close(); toast(done); refresh(); }
     catch (e) { msg.textContent = e.message; pin = ''; show(); }
     ok.disabled = false;
-  } }, 'Disarm');
+  } }, verb);
   const key = (label, fn, aria) => h('button', { type: 'button', class: 'pin-key', 'aria-label': aria ?? label, onclick: () => { fn(); msg.textContent = ''; show(); } }, label);
   const digit = (d) => key(String(d), () => { if (pin.length < 8) pin += d; });
   sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top pin-sheet' },
-    h('h2', {}, 'Disarm the alarm'), h('p', { class: 'syn' }, 'Enter your Home Control alarm PIN.'), dots,
+    h('h2', {}, title), h('p', { class: 'syn' }, 'Enter your Home Control alarm PIN.'), dots,
     h('div', { class: 'pinpad' }, [1, 2, 3, 4, 5, 6, 7, 8, 9].map(digit), key('Clear', () => { pin = ''; }, 'Clear PIN'), digit(0), key('⌫', () => { pin = pin.slice(0, -1); }, 'Delete last digit')),
     msg, h('div', { class: 'actions' }, ok, h('button', { class: 'btn block', onclick: () => sheet.close() }, 'Cancel')))));
   show();
@@ -598,8 +603,8 @@ function yaleSettingsCard() {
     const n = (y.sensors ?? []).length;
     return h('div', { class: 'card' }, h('h3', {}, 'Yale alarm'),
       h('p', { class: 'desc' }, `Signed in to Yale as ${y.account}. Your password is not stored — only a sign-in token. ${n} sensor${n === 1 ? '' : 's'} found.`),
-      h('p', { class: 'desc' }, y.pinSet ? 'Disarming needs the alarm PIN. To change it, enter a new PIN and your Yale password.'
-        : 'Set a PIN to disarm the alarm from Home Control. Setting it needs your Yale password, so nobody can change it from the hallway screen.'),
+      h('p', { class: 'desc' }, y.pinSet ? 'Arming and disarming need the alarm PIN. To change it, enter a new PIN and your Yale password.'
+        : 'Set a PIN to arm and disarm the alarm from Home Control. Setting it needs your Yale password, so nobody can change it from the hallway screen.'),
       h('div', { class: 'fields' }, h('label', { class: 'field' }, y.pinSet ? 'New alarm PIN' : 'Alarm PIN', pinIn), h('label', { class: 'field' }, 'Yale password', pw)),
       h('div', { class: 'row' }, save, h('button', { type: 'button', class: 'btn ghost remove', onclick: async () => {
         if (!(await confirmSheet('Sign out of Yale?', 'Home Control will stop showing and arming the alarm until you sign in again. The Yale app and your alarm are not affected.', 'Sign out'))) return;
@@ -677,7 +682,9 @@ function renderRoutines(main) {
     h('div', { class: 'routine-foot' },
       h('span', { class: 'muted' }, [routineNext(r), r.lastResult && r.lastResult !== 'ok' ? `Last run: ${r.lastResult}` : null].filter(Boolean).join(' · ')),
       h('div', { class: 'row' },
-        h('button', { class: 'btn ghost', onclick: () => routinesApi('POST', `/api/routines/${r.id}/run`, null, `Ran "${r.name}"`) }, icon('play'), 'Run now'),
+        h('button', { class: 'btn ghost', onclick: () => (r.actions.some((a) => a.type === 'alarm')
+          ? pinSheet(S.state?.yale, { title: `Run "${r.name}"`, verb: 'Run', send: (pin) => api('POST', `/api/routines/${r.id}/run`, { pin }), done: `Ran "${r.name}"` })
+          : routinesApi('POST', `/api/routines/${r.id}/run`, null, `Ran "${r.name}"`)) }, icon('play'), 'Run now'),
         h('button', { class: 'btn ghost', onclick: () => routineEditor(r) }, 'Edit'),
         h('button', { class: 'btn ghost remove', onclick: async () => {
           if (await confirmSheet(`Delete "${r.name}"?`, 'It stops running. Nothing else changes.', 'Delete')) routinesApi('DELETE', `/api/routines/${r.id}`, null, 'Routine deleted');
@@ -758,7 +765,7 @@ function routineEditor(r = null, preset = null) {
       const mode = h('select', { 'aria-label': 'Alarm' }, h('option', { value: 'arm', selected: a.mode !== 'home' }, 'Full arm'), h('option', { value: 'home', selected: a.mode === 'home' }, 'Part arm (night)'));
       read = () => ({ type: 'alarm', mode: mode.value });
       row = h('div', { class: 'routine-row' }, h('div', { class: 'row-ico' }, icon('shield')),
-        h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Alarm', mode), h('p', { class: 'muted' }, 'Routines can arm the alarm. Disarming always needs your PIN.')), remove);
+        h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Alarm', mode), h('p', { class: 'muted' }, 'Routines can arm the alarm. Run now asks for your PIN; scheduled runs arm on their own. Disarming always needs the PIN.')), remove);
     } else if (a.type === 'heating') {
       const which = h('select', { 'aria-label': 'Thermostat' }, thermostats.length ? thermostats.map((t) => h('option', { value: t.id, selected: a.id === t.id }, t.name)) : h('option', { value: '' }, 'Heating'));
       const temp = h('input', { type: 'number', min: 5, max: 32, step: 0.5, value: a.target ?? 21, 'aria-label': 'Temperature' });
@@ -928,9 +935,21 @@ function sensorState(d) {
   return [d.kind === 'motion' ? 'Ready' : 'OK', ''];
 }
 const sensorNeedsLook = (d) => Number(Boolean(d.open || d.locked === false || d.tamper || d.lowBattery));
+function devicesButton(y) {
+  const issues = (y.sensors ?? []).filter(sensorNeedsLook).length;
+  return h('button', { class: 'btn', 'aria-label': issues ? `Devices, ${issues} need a look` : 'Devices', onclick: (e) => { e.stopPropagation(); devicesSheet(); } },
+    icon('apps'), 'Devices', issues ? h('span', { class: 'flag warn' }, String(issues)) : null);
+}
+function devicesSheet() {
+  const sheet = $('#sheet');
+  sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top' },
+    h('h2', {}, 'Alarm devices'), alarmDevices(S.state?.yale ?? {}),
+    h('div', { class: 'actions' }, h('button', { class: 'btn block', onclick: () => sheet.close() }, 'Close')))));
+  openSheet(sheet);
+}
 function alarmDevices(y) {
   const list = [...(y.sensors ?? [])].sort((a, b) => (sensorNeedsLook(b) - sensorNeedsLook(a)) || a.name.localeCompare(b.name));
-  return h('div', { class: 'card hall-devices' }, h('h3', {}, 'Alarm devices'),
+  return h('div', { class: 'hall-devices' },
     list.length ? h('ul', { class: 'sensor-list' }, list.map((d) => {
       const [text, tone] = sensorState(d);
       return h('li', { class: tone },
@@ -1006,6 +1025,62 @@ function weatherSheet(w) {
   q.focus();
 }
 
+// --- live train departures for the hallway screen -----------------------------------------------------------
+function trainStatus(d) {
+  if (d.cancelled || d.etd === 'Cancelled') return ['Cancelled', 'bad'];
+  if (!d.etd || d.etd === 'On time') return ['On time', 'ok'];
+  if (d.etd === 'Delayed') return ['Delayed', 'warn'];
+  return [`Exp ${d.etd}`, 'warn'];
+}
+function hallTrains(t) {
+  const change = (e) => { e.stopPropagation(); trainSheet(t); };
+  if (!t?.station) {
+    return h('div', { class: 'card hall-trains' }, h('h3', {}, 'Trains'),
+      h('p', { class: 'muted' }, 'Show live departures from your station.'),
+      h('button', { class: 'btn primary', onclick: change }, icon('train'), 'Choose a station'));
+  }
+  const rows = t.departures ?? [];
+  const stale = t.at && Date.now() - t.at > 180_000;
+  return h('div', { class: 'card hall-trains' },
+    h('div', { class: 'hall-head' }, h('h3', {}, `Trains from ${t.station.name}`),
+      h('button', { class: 'btn', 'aria-label': `Change station, now ${t.station.name}`, onclick: change }, 'Change')),
+    rows.length ? h('ul', { class: 'train-list' }, rows.map((d) => {
+      const [text, tone] = trainStatus(d);
+      return h('li', { class: tone === 'bad' ? 'cancelled' : '' },
+        h('b', { class: 'num train-time' }, d.std ?? '–'),
+        h('div', { class: 'train-dest' }, h('span', {}, d.destination), d.reason || d.operator ? h('small', {}, d.reason ?? d.operator) : null),
+        d.platform ? h('span', { class: 'train-plat', 'aria-label': `Platform ${d.platform}` }, h('small', {}, 'Plat'), h('b', { class: 'num' }, d.platform)) : h('span', { class: 'train-plat' }),
+        h('span', { class: `train-state ${tone}` }, text));
+    })) : h('p', { class: 'muted' }, t.error ?? (t.at ? 'No departures in the next couple of hours.' : 'Getting train times…')),
+    (t.messages ?? []).length ? h('p', { class: 'train-msg' }, t.messages[0]) : null,
+    t.at ? h('small', { class: `train-upd ${stale ? 'stale' : ''}` },
+      `${stale ? 'Last update' : 'Updated'} ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${t.error ? ` · ${t.error}` : ''}`) : null);
+}
+function trainSheet(t) {
+  const sheet = $('#sheet');
+  const q = h('input', { type: 'search', placeholder: 'Station name', 'aria-label': 'Station name', value: t?.station?.name ?? '' });
+  const list = h('div', { class: 'wx-results' });
+  const msg = h('p', { class: 'muted', role: 'status' });
+  const find = async () => {
+    msg.textContent = 'Searching…';
+    list.replaceChildren();
+    try {
+      const found = await api('GET', `/api/trains/search?q=${encodeURIComponent(q.value)}`);
+      msg.textContent = found.length ? '' : 'No stations found. Try another spelling.';
+      list.replaceChildren(...found.map((p) => h('button', { class: 'btn wx-place', onclick: async () => {
+        try { await api('POST', '/api/trains/station', p); sheet.close(); toast(`Trains from ${p.name}`); refresh(); } catch (e) { msg.textContent = e.message; }
+      } }, h('b', {}, p.name), h('small', {}, p.crs))));
+    } catch (e) { msg.textContent = e.message; }
+  };
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') find(); });
+  sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top' },
+    h('h2', {}, 'Train station'),
+    h('div', { class: 'wx-search' }, q, h('button', { class: 'btn primary', onclick: find }, icon('search'), 'Search')),
+    msg, list, h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => sheet.close() }, 'Close')))));
+  openSheet(sheet);
+  q.focus();
+}
+
 function renderHallway(main) {
   if (S.dragging) return;
   const s = S.state ?? {};
@@ -1028,20 +1103,32 @@ function renderHallway(main) {
           document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {});
         } }, icon('expand')),
         h('a', { class: 'icon-btn', href: '#/home', 'aria-label': 'Leave the hallway screen', title: 'Leave the hallway screen' }, icon('x')))),
+    // one screen, no scrolling (on a tablet or bigger): alarm and heating | trains | lights and cameras
     h('div', { class: 'hall-grid' },
-      y?.signedIn ? h('section', { class: 'hall-col', 'aria-label': 'Alarm' }, alarmCard(y), alarmDevices(y)) : null,
-      h('section', { class: 'hall-col', 'aria-label': 'Heating and lights' },
-        t ? thermostatCard(t, s.hive.boost) : null,
+      y?.signedIn || t ? h('section', { class: 'hall-col', 'aria-label': 'Alarm and heating' },
+        y?.signedIn ? alarmCard(y, { devices: true }) : null,
+        t ? thermostatCard(t, s.hive.boost) : null) : null,
+      h('section', { class: 'hall-col', 'aria-label': 'Trains' }, hallTrains(s.trains)),
+      h('section', { class: 'hall-col hall-side', 'aria-label': 'Lights and cameras' },
         rooms.length ? h('div', { class: 'card wall-lights' },
           h('div', { class: 'hall-head' }, h('h3', {}, 'Lights'),
             lit.length ? h('button', { class: 'btn', onclick: () => lit.forEach((r) => hueSet('group', r.id, { on: false })) }, icon('power'), 'All off') : null),
           h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
-            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null),
-      ringCams.length || (s.cameras ?? []).length ? h('section', { class: 'hall-col', 'aria-label': 'Cameras' },
-        ringCams.map((d) => hallRingCard(d, s.ring?.events ?? [])),
-        (s.cameras ?? []).map(cameraCard)) : null)));
+            icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null,
+        ringCams.length + (s.cameras ?? []).length ? h('div', { class: `hall-cams ${ringCams.length + (s.cameras ?? []).length > 2 ? 'many' : ''}` },
+          ringCams.map((d) => hallRingCard(d, s.ring?.events ?? [])),
+          (s.cameras ?? []).map(cameraCard)) : null))));
   keepAwake(true);
+  requestAnimationFrame(fitTrains);
 }
+// the departures board shows only whole rows: drop the ones that don't fit the screen
+function fitTrains() {
+  const list = $('.hall .train-list');
+  if (!list || list.scrollHeight <= list.clientHeight) return;
+  const bottom = list.getBoundingClientRect().bottom;
+  [...list.children].filter((li) => li.getBoundingClientRect().bottom > bottom + 1).forEach((li) => li.remove());
+}
+addEventListener('resize', () => { if (currentPage() === 'hallway') rerender(); });
 
 // --- home-network cameras (RTSP, via the server's ffmpeg) ------------------------------------------------
 const camSnap = (id) => `/api/cameras/${id}/snapshot?v=${Math.floor(Date.now() / 10_000)}`;
