@@ -900,3 +900,11 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
   .hall .alarm-actions .btn { padding-inline: 12px; }
   .hall .thermo { gap: 8px; }
 }
+
+/* trains: live / not live */
+.train-upd { display: inline-flex; align-items: center; gap: 6px; }
+.train-warn { margin: 0; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px 10px; border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--text); font-size: .85rem; font-weight: 600; }
+.train-warn svg { width: 18px; height: 18px; color: var(--warn); margin-top: 1px; }
+.train-warn span { display: grid; gap: 2px; }
+.train-warn small { color: var(--text-2); font-weight: 500; }

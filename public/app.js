@@ -43,6 +43,7 @@ const ICONS = {
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0',
   siren: 'M7 18v-6a5 5 0 0 1 10 0v6M5 21h14v-3H5zM12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4',
   vol: 'M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13', mute: 'M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6',
+  alert: 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01',
   train: 'M8 3h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM4 11h16M12 3v8M8 15h.01M16 15h.01M7 19l-2 3M17 19l2 3',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
   switch: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01',
@@ -1039,8 +1040,21 @@ function hallTrains(t) {
       h('p', { class: 'muted' }, 'Show live departures from your station.'),
       h('button', { class: 'btn primary', onclick: change }, icon('train'), 'Choose a station'));
   }
-  const rows = t.departures ?? [];
-  const stale = t.at && Date.now() - t.at > 180_000;
+  // trains that have already gone drop off between updates
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const gone = (d) => {
+    const hhmm = /^\d\d:\d\d$/.test(d.etd ?? '') ? d.etd : d.std;
+    if (!/^\d\d:\d\d$/.test(hhmm ?? '')) return false;
+    let diff = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)) - nowMins;
+    if (diff < -720) diff += 1440; // just after midnight
+    return diff < -1;
+  };
+  const age = t.at ? Date.now() - t.at : Infinity;
+  const stale = age > 180_000;
+  // older than 20 minutes the board is more wrong than right, so don't show it
+  const rows = age > 20 * 60_000 ? [] : (t.departures ?? []).filter((d) => !gone(d));
+  const notLive = stale || t.error;
   return h('div', { class: 'card hall-trains' },
     h('div', { class: 'hall-head' }, h('h3', {}, `Trains from ${t.station.name}`),
       h('button', { class: 'btn', 'aria-label': `Change station, now ${t.station.name}`, onclick: change }, 'Change')),
@@ -1051,10 +1065,12 @@ function hallTrains(t) {
         h('div', { class: 'train-dest' }, h('span', {}, d.destination), d.reason || d.operator ? h('small', {}, d.reason ?? d.operator) : null),
         d.platform ? h('span', { class: 'train-plat', 'aria-label': `Platform ${d.platform}` }, h('small', {}, 'Plat'), h('b', { class: 'num' }, d.platform)) : h('span', { class: 'train-plat' }),
         h('span', { class: `train-state ${tone}` }, text));
-    })) : h('p', { class: 'muted' }, t.error ?? (t.at ? 'No departures in the next couple of hours.' : 'Getting train times…')),
-    (t.messages ?? []).length ? h('p', { class: 'train-msg' }, t.messages[0]) : null,
-    t.at ? h('small', { class: `train-upd ${stale ? 'stale' : ''}` },
-      `${stale ? 'Last update' : 'Updated'} ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${t.error ? ` · ${t.error}` : ''}`) : null);
+    })) : h('p', { class: 'muted' }, notLive ? 'Live train times aren’t available right now.' : t.at ? 'No departures in the next couple of hours.' : 'Getting train times…'),
+    !notLive && (t.messages ?? []).length ? h('p', { class: 'train-msg' }, t.messages[0]) : null,
+    notLive ? h('p', { class: 'train-warn', role: 'status' }, icon('alert'),
+      h('span', {}, `Not live${t.at ? ` · last update ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}`,
+        t.source === 'public' ? h('small', {}, 'The free public feed is down. Add a Rail Data key in Settings for National Rail’s own live times.') : t.error ? h('small', {}, t.error) : null))
+      : t.at ? h('small', { class: 'train-upd' }, h('span', { class: 'dot ok' }), `Live · updated ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`) : null);
 }
 function trainSheet(t) {
   const sheet = $('#sheet');
@@ -2055,6 +2071,7 @@ async function renderSettings(main) {
     h('div', { class: 'card' }, h('h3', {}, 'TV Guide'),
       h('div', { class: 'toggle-row' }, h('span', {}, 'Show adult channels'),
         h('label', { class: 'switch' }, h('input', { type: 'checkbox', name: 'showAdult', checked: s.showAdult }), h('span')))),
+    trainsSettingsCard(s),
     h('div', { class: 'card' }, h('h3', {}, 'Cisco switches'), h('p', { class: 'desc' }, `Read-only monitoring. Password ${s.cisco.passwordSet ? 'set' : 'not set'} · enable secret ${s.cisco.enableSet ? 'set' : 'not set'} — never shown.`),
       h('div', { class: 'fields' }, s.switches.map((sw) => h('label', { class: 'field' }, `${sw.name} IP`, h('input', { name: `switch.${sw.id}.ip`, value: sw.ip, inputmode: 'decimal' })))),
       h('div', { class: 'fields' },
@@ -2086,6 +2103,29 @@ async function renderSettings(main) {
     }
   });
   main.replaceChildren(pageHead('Settings', 'Devices and account'), form);
+}
+
+function trainsSettingsCard(s) {
+  const set = Boolean(s.raildata?.keySet);
+  const key = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: set ? 'saved — paste a new one to replace it' : 'Consumer key', 'aria-label': 'Rail Data key' });
+  const msg = h('p', { class: 'muted', role: 'status' });
+  const save = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
+    save.disabled = true; msg.textContent = 'Checking the key with National Rail…';
+    try { await api('POST', '/api/trains/key', { key: key.value }); key.value = ''; msg.textContent = 'Key saved. The hallway screen now shows National Rail’s live times.'; refresh(); }
+    catch (e) { msg.textContent = e.message; }
+    save.disabled = false;
+  } }, set ? 'Replace key' : 'Save key');
+  return h('div', { class: 'card' }, h('h3', {}, 'Train times'),
+    h('p', { class: 'desc' }, set
+      ? 'Live departures come from National Rail’s Rail Data Marketplace with your key. The key is kept on the server and never shown.'
+      : 'For reliable live departures on the hallway screen, get a free key: sign up at raildata.org.uk, subscribe to the free “Live Departure Board” product, then copy its Consumer key here.'),
+    h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Rail Data key', key)),
+    h('div', { class: 'row' }, save,
+      set ? h('button', { type: 'button', class: 'btn', onclick: async () => {
+        if (!(await confirmSheet('Remove the Rail Data key?', 'The hallway screen goes back to the free public feed, which may not be live.', 'Remove'))) return;
+        try { await api('DELETE', '/api/trains/key'); msg.textContent = 'Key removed.'; setTimeout(() => rerender(), 600); } catch (e) { msg.textContent = e.message; }
+      } }, 'Remove') : null),
+    msg);
 }
 
 // --- render loop -----------------------------------------------------------------------------------------------------------
