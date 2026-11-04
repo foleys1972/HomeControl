@@ -1069,7 +1069,8 @@ function hallTrains(t) {
     !notLive && (t.messages ?? []).length ? h('p', { class: 'train-msg' }, t.messages[0]) : null,
     notLive ? h('p', { class: 'train-warn', role: 'status' }, icon('alert'),
       h('span', {}, `Not live${t.at ? ` · last update ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}`,
-        t.source === 'public' ? h('small', {}, 'The free public feed is down. Add a Rail Data key in Settings for National Rail’s own live times.') : t.error ? h('small', {}, t.error) : null))
+        h('small', {}, t.source === 'raildata' ? (t.error ?? 'National Rail isn’t answering.') : 'traintimes.org.uk isn’t answering.',
+          ' You can switch source in Settings → Train times.')))
       : t.at ? h('small', { class: 'train-upd' }, h('span', { class: 'dot ok' }), `Live · updated ${new Date(t.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`) : null);
 }
 function trainSheet(t) {
@@ -2106,23 +2107,34 @@ async function renderSettings(main) {
 }
 
 function trainsSettingsCard(s) {
-  const set = Boolean(s.raildata?.keySet);
+  const set = Boolean(s.trains?.keySet);
+  const src = s.trains?.source ?? 'free';
   const key = h('input', { type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: set ? 'saved — paste a new one to replace it' : 'Consumer key', 'aria-label': 'Rail Data key' });
   const msg = h('p', { class: 'muted', role: 'status' });
   const save = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
     save.disabled = true; msg.textContent = 'Checking the key with National Rail…';
-    try { await api('POST', '/api/trains/key', { key: key.value }); key.value = ''; msg.textContent = 'Key saved. The hallway screen now shows National Rail’s live times.'; refresh(); }
+    try { await api('POST', '/api/trains/key', { key: key.value }); key.value = ''; msg.textContent = 'Key saved. The hallway screen now shows National Rail’s live times.'; refresh(); setTimeout(() => rerender(), 600); }
     catch (e) { msg.textContent = e.message; }
     save.disabled = false;
   } }, set ? 'Replace key' : 'Save key');
+  const pick = async (value) => {
+    if (value === src) return;
+    try { await api('POST', '/api/trains/source', { source: value }); msg.textContent = value === 'free' ? 'Using traintimes.org.uk.' : 'Using National Rail.'; refresh(); setTimeout(() => rerender(), 600); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  const option = (value, label, note, disabled) => h('button', { type: 'button', class: 'source-opt', 'aria-pressed': String(src === value), disabled, onclick: () => pick(value) },
+    h('b', {}, label), h('small', {}, note));
   return h('div', { class: 'card' }, h('h3', {}, 'Train times'),
-    h('p', { class: 'desc' }, set
-      ? 'Live departures come from National Rail’s Rail Data Marketplace with your key. The key is kept on the server and never shown.'
-      : 'For reliable live departures on the hallway screen, get a free key: sign up at raildata.org.uk, subscribe to the free “Live Departure Board” product, then copy its Consumer key here.'),
+    h('p', { class: 'desc' }, 'Where the hallway screen gets live departures.'),
+    h('div', { class: 'source-opts', role: 'group', 'aria-label': 'Train times source' },
+      option('free', 'traintimes.org.uk', 'Free, no key. Reads its public departure board, so it can break if the site changes.'),
+      option('raildata', 'National Rail', set ? 'Official live data with your Rail Data key.' : 'Official live data. Needs a free Rail Data key — save one below first.', !set)),
+    h('p', { class: 'desc' }, set ? 'Your Rail Data key is kept on the server and never shown.'
+      : 'To get a key: sign up at raildata.org.uk, subscribe to the free “Live Departure Board” product, then copy its Consumer key here. It can take a few days to come through.'),
     h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Rail Data key', key)),
     h('div', { class: 'row' }, save,
       set ? h('button', { type: 'button', class: 'btn', onclick: async () => {
-        if (!(await confirmSheet('Remove the Rail Data key?', 'The hallway screen goes back to the free public feed, which may not be live.', 'Remove'))) return;
+        if (!(await confirmSheet('Remove the Rail Data key?', 'The hallway screen switches to traintimes.org.uk.', 'Remove'))) return;
         try { await api('DELETE', '/api/trains/key'); msg.textContent = 'Key removed.'; setTimeout(() => rerender(), 600); } catch (e) { msg.textContent = e.message; }
       } }, 'Remove') : null),
     msg);

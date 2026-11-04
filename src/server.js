@@ -110,7 +110,7 @@ function publicSettings() {
     cisco: { passwordSet: Boolean(c.cisco.password), enableSet: Boolean(c.cisco.enable) },
     pingTargets: c.pingTargets,
     showAdult: Boolean(c.showAdult),
-    raildata: { keySet: trains.keySet() },
+    trains: trains.settings(),
   };
 }
 
@@ -418,6 +418,9 @@ async function api(req, res, url) {
     catch (e) { console.error(new Date().toISOString(), `trains: key not saved: ${e.message}`); return send(res, e.status ?? 502, { error: e.message }); }
   }
   if (route === 'DELETE /api/trains/key') return send(res, 200, trains.removeKey());
+  if (route === 'POST /api/trains/source') {
+    try { return send(res, 200, await trains.setSource(String((await readJson(req)).source))); } catch (e) { return send(res, e.status ?? 502, { error: e.message }); }
+  }
   if (route === 'POST /api/trains/station') {
     try {
       const r = await trains.setStation(await readJson(req));
