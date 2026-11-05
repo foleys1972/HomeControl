@@ -915,3 +915,35 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .source-opt small { color: var(--muted); }
 .source-opt[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); box-shadow: inset 0 0 0 1px var(--accent); }
 .source-opt:disabled { opacity: .55; cursor: default; }
+
+/* favourite trains: warnings on the hallway board */
+.fav-alerts { display: grid; gap: 8px; flex: none; }
+.fav-alert { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border-radius: 14px; }
+.fav-alert svg { width: 20px; height: 20px; margin-top: 2px; }
+.fav-alert div { display: grid; gap: 2px; min-width: 0; }
+.fav-alert small { color: var(--text-2); font-weight: 500; }
+.fav-alert.ok { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.fav-alert.ok svg { color: var(--ok); fill: currentColor; }
+.fav-alert.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 60%, transparent); font-size: 1.05rem; }
+.fav-alert.warn svg { color: var(--warn); }
+.fav-alert.bad { background: var(--bad-fill); color: #fff; padding: 16px; grid-template-columns: 34px minmax(0, 1fr); font-size: 1.3rem; line-height: 1.25;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad-fill) 35%, transparent); animation: fav-pulse 1.6s ease-in-out infinite; }
+.fav-alert.bad svg { width: 32px; height: 32px; color: #fff; }
+.fav-alert.bad small { color: rgba(255, 255, 255, .9); font-size: .95rem; }
+@keyframes fav-pulse { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--bad-fill) 18%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .fav-alert.bad { animation: none; } }
+.train-dest .fav-star { width: 14px; height: 14px; margin-right: 5px; vertical-align: -1px; color: var(--warn); fill: currentColor; }
+.train-list li.fav .train-dest span { font-weight: 700; }
+
+/* favourite trains: editor in the station sheet */
+.fav-editor { display: grid; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.fav-editor h3 { margin: 0; }
+.fav-editor .desc { margin: 0; }
+.fav-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fav-list li { display: grid; grid-template-columns: 18px auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 0; }
+.fav-list .fav-star { width: 16px; height: 16px; color: var(--warn); fill: currentColor; }
+.fav-list span { color: var(--text-2); }
+.fav-add { display: grid; gap: 10px; }
+.fav-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.day-btn { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.day-btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }

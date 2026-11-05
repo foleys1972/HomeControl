@@ -13,12 +13,15 @@ const HUXLEY = 'https://huxley2.azurewebsites.net';
 const UA = 'HomeControl/1.0 (home hallway screen; one request a minute)';
 const CRS_RE = /^[A-Z]{3}$/;
 const KEY_RE = /^[\w-]{16,128}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ROWS = 10;
 export const SOURCES = ['free', 'raildata'];
 
 const log = (msg) => console.log(new Date().toISOString(), `trains: ${msg}`);
 const station = () => store.get().trains ?? null;
 const apiKey = () => store.get().raildata?.key ?? null;
+// favourite trains: [{ time: '07:49', days: [1, 2, 3, 4, 5] }] (0 = Sunday); the screen warns when one is late or cancelled
+const favourites = () => store.get().trainFavourites ?? [];
 // a saved key means National Rail unless the free board was picked since
 const source = () => store.get().trainsSource ?? (apiKey() ? 'raildata' : 'free');
 
@@ -128,6 +131,24 @@ export async function setStation(p) {
   return summary();
 }
 
+/** Replace the favourite trains. Each is a departure time and the days of the week it's caught (0 = Sunday). */
+export function setFavourites(list) {
+  const bad = (msg) => Object.assign(new Error(msg), { status: 400 });
+  if (!Array.isArray(list) || list.length > 12) throw bad('Up to 12 favourite trains');
+  const byTime = new Map();
+  for (const f of list) {
+    const time = String(f?.time ?? '');
+    if (!TIME_RE.test(time)) throw bad('Give the train’s departure time, like 07:49');
+    const days = (Array.isArray(f?.days) ? f.days : []).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (!days.length) throw bad('Pick at least one day');
+    byTime.set(time, [...new Set([...(byTime.get(time) ?? []), ...days])].sort());
+  }
+  const clean = [...byTime].sort(([a], [b]) => a.localeCompare(b)).map(([time, days]) => ({ time, days }));
+  store.update((c) => { c.trainFavourites = clean; });
+  log(`${clean.length} favourite train(s) saved`);
+  return summary();
+}
+
 export async function setSource(src) {
   if (!SOURCES.includes(src)) throw Object.assign(new Error('Unknown train times source'), { status: 400 });
   if (src === 'raildata' && !apiKey()) throw Object.assign(new Error('Save a Rail Data key first'), { status: 400 });
@@ -169,7 +190,7 @@ export async function refresh(force = false) {
 export function summary() {
   const st = station();
   const fresh = cache.crs === st?.crs && cache.source === source();
-  return { station: st, source: source(), ...(fresh ? cache : { at: 0, departures: [], messages: [], error: cache.error }) };
+  return { station: st, source: source(), favourites: favourites(), ...(fresh ? cache : { at: 0, departures: [], messages: [], error: cache.error }) };
 }
 
 export const settings = () => ({ keySet: Boolean(apiKey()), source: source() });

@@ -1034,6 +1034,39 @@ function trainStatus(d) {
   if (d.etd === 'Delayed') return ['Delayed', 'warn'];
   return [`Exp ${d.etd}`, 'warn'];
 }
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first
+function daysLabel(days) {
+  const k = [...days].sort().join('');
+  if (k === '0123456') return 'Every day';
+  if (k === '12345') return 'Mon–Fri';
+  if (k === '06') return 'Weekends';
+  const on = WEEK.map((d) => days.includes(d));
+  const first = on.indexOf(true);
+  const last = on.lastIndexOf(true);
+  // three or more days in a row read as a range, like Mon–Sat
+  if (last - first >= 2 && on.slice(first, last + 1).every(Boolean)) return `${DAY_SHORT[WEEK[first]]}–${DAY_SHORT[WEEK[last]]}`;
+  return WEEK.filter((d) => days.includes(d)).map((d) => DAY_SHORT[d]).join(', ');
+}
+const hhmmMins = (s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
+// a warning for a favourite train: green if it's on time, amber if late, big and red if it's cancelled
+function favAlert(d) {
+  const [, tone] = trainStatus(d);
+  const plat = d.platform ? `Platform ${d.platform}` : null;
+  if (tone === 'bad') {
+    return h('div', { class: 'fav-alert bad', role: 'alert' }, icon('alert'),
+      h('div', {}, h('b', {}, `Your ${d.std} to ${d.destination} is cancelled`), h('small', {}, d.reason ?? 'Check for another train.')));
+  }
+  if (tone === 'warn') {
+    let late = null;
+    if (/^\d\d:\d\d$/.test(d.etd ?? '')) { late = hhmmMins(d.etd) - hhmmMins(d.std); if (late < -720) late += 1440; }
+    return h('div', { class: 'fav-alert warn', role: 'alert' }, icon('alert'),
+      h('div', {}, h('b', {}, `Your ${d.std} to ${d.destination} is delayed`),
+        h('small', {}, [late > 0 ? `Expected ${d.etd}, ${late} min late` : 'No expected time yet', plat, d.reason].filter(Boolean).join(' · '))));
+  }
+  return h('div', { class: 'fav-alert ok', role: 'status' }, icon('star'),
+    h('div', {}, h('b', {}, `Your ${d.std} is on time`), plat ? h('small', {}, plat) : null));
+}
 function hallTrains(t) {
   const change = (e) => { e.stopPropagation(); trainSheet(t); };
   if (!t?.station) {
@@ -1056,14 +1089,20 @@ function hallTrains(t) {
   // older than 20 minutes the board is more wrong than right, so don't show it
   const rows = age > 20 * 60_000 ? [] : (t.departures ?? []).filter((d) => !gone(d));
   const notLive = stale || t.error;
+  // favourite trains for today, warned about from three hours before they leave
+  const favTimes = new Set((t.favourites ?? []).filter((f) => f.days.includes(now.getDay())).map((f) => f.time));
+  const isFav = (d) => favTimes.has(d.std);
+  const soon = (d) => { let m = hhmmMins(d.std) - nowMins; if (m < -720) m += 1440; return m <= 180; };
+  const alerts = notLive ? [] : rows.filter((d) => isFav(d) && soon(d)).slice(0, 2).map(favAlert);
   return h('div', { class: 'card hall-trains' },
     h('div', { class: 'hall-head' }, h('h3', {}, `Trains from ${t.station.name}`),
-      h('button', { class: 'btn', 'aria-label': `Change station, now ${t.station.name}`, onclick: change }, 'Change')),
+      h('button', { class: 'btn', 'aria-label': `Change station or favourite trains, now ${t.station.name}`, onclick: change }, 'Edit')),
+    alerts.length ? h('div', { class: 'fav-alerts' }, alerts) : null,
     rows.length ? h('ul', { class: 'train-list' }, rows.map((d) => {
       const [text, tone] = trainStatus(d);
-      return h('li', { class: tone === 'bad' ? 'cancelled' : '' },
+      return h('li', { class: `${tone === 'bad' ? 'cancelled' : ''} ${isFav(d) ? 'fav' : ''}` },
         h('b', { class: 'num train-time' }, d.std ?? '–'),
-        h('div', { class: 'train-dest' }, h('span', {}, d.destination), d.reason || d.operator ? h('small', {}, d.reason ?? d.operator) : null),
+        h('div', { class: 'train-dest' }, h('span', {}, isFav(d) ? icon('star', 'fav-star') : null, d.destination), d.reason || d.operator ? h('small', {}, d.reason ?? d.operator) : null),
         d.platform ? h('span', { class: 'train-plat', 'aria-label': `Platform ${d.platform}` }, h('small', {}, 'Plat'), h('b', { class: 'num' }, d.platform)) : h('span', { class: 'train-plat' }),
         h('span', { class: `train-state ${tone}` }, text));
     })) : h('p', { class: 'muted' }, notLive ? 'Live train times aren’t available right now.' : t.at ? 'No departures in the next couple of hours.' : 'Getting train times…'),
@@ -1094,9 +1133,45 @@ function trainSheet(t) {
   sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top' },
     h('h2', {}, 'Train station'),
     h('div', { class: 'wx-search' }, q, h('button', { class: 'btn primary', onclick: find }, icon('search'), 'Search')),
-    msg, list, h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => sheet.close() }, 'Close')))));
+    msg, list,
+    t?.station ? favouritesEditor(t.favourites ?? []) : null,
+    h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => sheet.close() }, 'Close')))));
   openSheet(sheet);
-  q.focus();
+  if (!t?.station) q.focus();
+}
+// favourite trains: a departure time and the days it's caught; the hallway warns if it's late or cancelled
+function favouritesEditor(start) {
+  let favs = start.map((f) => ({ ...f }));
+  const box = h('section', { class: 'fav-editor', 'aria-label': 'Favourite trains' });
+  const msg = h('p', { class: 'muted', role: 'status' });
+  const time = h('input', { type: 'time', 'aria-label': 'Departure time' });
+  const days = new Set([1, 2, 3, 4, 5]);
+  const save = async (next, done) => {
+    try { const r = await api('POST', '/api/trains/favourites', { favourites: next }); favs = r.favourites; draw(); msg.textContent = done; refresh(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  const draw = () => box.replaceChildren(
+    h('h3', {}, 'Favourite trains'),
+    h('p', { class: 'desc' }, 'The hallway screen warns you if one of these is delayed, and more loudly if it’s cancelled.'),
+    favs.length ? h('ul', { class: 'fav-list' }, favs.map((f) => h('li', {},
+      icon('star', 'fav-star'), h('b', { class: 'num' }, f.time), h('span', {}, daysLabel(f.days)),
+      h('button', { type: 'button', class: 'btn', 'aria-label': `Remove the ${f.time}`, onclick: () => save(favs.filter((x) => x !== f), `Removed the ${f.time}.`) }, 'Remove')))) : null,
+    h('div', { class: 'fav-add' },
+      h('label', { class: 'field' }, 'Leaves at', time),
+      h('div', { class: 'fav-days', role: 'group', 'aria-label': 'Days' }, WEEK.map((d) => h('button', {
+        type: 'button', class: 'day-btn', 'aria-pressed': String(days.has(d)), 'aria-label': DAY_SHORT[d],
+        onclick: (e) => { if (days.has(d)) days.delete(d); else days.add(d); e.currentTarget.setAttribute('aria-pressed', String(days.has(d))); },
+      }, DAY_SHORT[d].slice(0, 2)))),
+      h('button', { type: 'button', class: 'btn primary', onclick: () => {
+        if (!time.value) { msg.textContent = 'Put in the time the train leaves, like 07:49.'; return; }
+        if (!days.size) { msg.textContent = 'Pick at least one day.'; return; }
+        const at = time.value.slice(0, 5);
+        time.value = '';
+        save([...favs, { time: at, days: [...days] }], `Added the ${at}.`);
+      } }, icon('star'), 'Add favourite')),
+    msg);
+  draw();
+  return box;
 }
 
 function renderHallway(main) {
