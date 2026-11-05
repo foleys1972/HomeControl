@@ -100,7 +100,7 @@ function icon(name, cls = '') {
 }
 
 // --- api ------------------------------------------------------------------------------------------
-async function api(method, url, body) {
+async function api(method, url, body, { retried = false } = {}) {
   const res = await fetch(url, {
     method,
     headers: { 'X-Requested-With': 'home-control', ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -108,8 +108,26 @@ async function api(method, url, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && url !== '/api/login') { showAuth(false); throw new Error('Not logged in'); }
+  // Settings are locked with the alarm PIN: ask for it, then try once more
+  if (res.status === 423 && data.locked) {
+    if (!retried && await unlockSettings()) return api(method, url, body, { retried: true });
+    throw Object.assign(new Error('Settings are locked'), { locked: true });
+  }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+// resolves true once the alarm PIN has unlocked Settings on this device, false if the sheet was closed
+function unlockSettings() {
+  return new Promise((resolve) => {
+    const sheet = $('#sheet');
+    if (sheet.open) sheet.close();
+    let unlocked = false;
+    pinSheet({ pinSet: true }, {
+      title: 'Unlock Settings', verb: 'Unlock', done: 'Settings unlocked',
+      send: async (pin) => { await api('POST', '/api/settings/unlock', { pin }); unlocked = true; },
+    });
+    sheet.addEventListener('close', () => resolve(unlocked), { once: true });
+  });
 }
 
 let toastTimer;
@@ -2109,10 +2127,23 @@ function hueLightsCard(s) {
 
 // --- settings ------------------------------------------------------------------------------------------------------------
 async function renderSettings(main) {
-  const s = await api('GET', '/api/settings');
+  let s;
+  try { s = await api('GET', '/api/settings'); } catch (e) {
+    if (!e.locked) throw e;
+    main.replaceChildren(h('div', { class: 'card settings-locked' }, icon('lock'),
+      h('h3', {}, 'Settings are locked'),
+      h('p', { class: 'desc' }, 'Enter the alarm PIN to change settings. They lock again after 5 minutes without changes.'),
+      h('button', { type: 'button', class: 'btn primary', onclick: () => rerender() }, icon('lock'), 'Unlock')));
+    return;
+  }
   const msg = h('span', { class: 'muted', role: 'status' });
   const pairMsg = h('p', { class: 'desc' }, s.hue.paired ? 'Paired — lights are available.' : 'Press the round button on the bridge, then pair within 30 seconds.');
   const form = h('form', { class: 'settings' },
+    s.locking ? h('div', { class: 'card settings-unlocked' }, icon('lock'),
+      h('p', { class: 'desc' }, 'Settings are unlocked on this device. They lock again after 5 minutes without changes.'),
+      h('button', { type: 'button', class: 'btn', onclick: async () => {
+        try { await api('POST', '/api/settings/lock'); toast('Settings locked'); location.hash = '#/home'; } catch (e) { toast(e.message); }
+      } }, 'Lock now')) : null,
     h('div', { class: 'card' }, h('h3', {}, 'Philips Hue'), pairMsg,
       h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Bridge IP', h('input', { name: 'hue.ip', value: s.hue.ip ?? '', placeholder: 'Hue bridge IP address', inputmode: 'decimal' }))),
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: async () => {

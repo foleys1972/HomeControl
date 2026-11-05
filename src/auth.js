@@ -41,12 +41,13 @@ export function sessionCookie() {
 
 export const clearCookie = () => `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;
 
-export function isAuthed(req) {
-  const raw = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`));
+// a signed cookie is valid if its signature matches and it hasn't expired; `purpose` keeps one kind from passing as another
+function validCookie(req, name, purpose = '') {
+  const raw = (req.headers.cookie || '').split(/;\s*/).find((c) => c.startsWith(`${name}=`));
   if (!raw) return false;
-  const [payload, sig] = raw.slice(COOKIE.length + 1).split('.');
+  const [payload, sig] = raw.slice(name.length + 1).split('.');
   if (!payload || !sig) return false;
-  const expected = sign(payload);
+  const expected = sign(purpose + payload);
   if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
   try {
     return JSON.parse(Buffer.from(payload, 'base64url').toString()).exp > Date.now();
@@ -54,3 +55,15 @@ export function isAuthed(req) {
     return false;
   }
 }
+
+export const isAuthed = (req) => validCookie(req, COOKIE);
+
+// Settings unlock: the alarm PIN opens Settings on one device for a few minutes (kept open while it's being used)
+const UNLOCK = 'hc_settings';
+export const UNLOCK_MINUTES = 5;
+export function unlockCookie() {
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + UNLOCK_MINUTES * 60_000 })).toString('base64url');
+  return `${UNLOCK}=${payload}.${sign(`settings.${payload}`)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${UNLOCK_MINUTES * 60}`;
+}
+export const lockCookie = () => `${UNLOCK}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;
+export const settingsUnlocked = (req) => validCookie(req, UNLOCK, 'settings.');

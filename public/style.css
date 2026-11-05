@@ -947,3 +947,11 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .fav-days { display: flex; flex-wrap: wrap; gap: 6px; }
 .day-btn { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .day-btn[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
+
+/* Settings lock (alarm PIN) */
+.settings-locked { display: grid; justify-items: center; text-align: center; gap: 10px; max-width: 460px; margin: 40px auto; padding: 28px 22px; }
+.settings-locked > svg { width: 40px; height: 40px; color: var(--accent); }
+.settings-locked h3, .settings-locked .desc { margin: 0; }
+.settings-unlocked { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.settings-unlocked > svg { width: 20px; height: 20px; color: var(--ok); }
+.settings-unlocked .desc { margin: 0; }

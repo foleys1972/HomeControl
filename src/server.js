@@ -147,6 +147,25 @@ function applySettings(body) {
   });
 }
 
+// Requests that change Home Control's setup (what's on the Settings page). Once an alarm PIN is set they need the
+// PIN, entered in the last few minutes on that device, so someone at the hallway screen can't change them.
+// Changing the PIN itself is left out: it needs the Yale account password instead (and is the way back in if
+// the PIN is forgotten).
+const SETTINGS_ROUTES = [
+  /^(GET|POST) \/api\/settings$/,
+  /^POST \/api\/hue\/(pair|search)$/,
+  /^POST \/api\/hue\/light\/\d+\/name$/,
+  /^POST \/api\/devices$/,
+  /^DELETE \/api\/devices\//,
+  /^POST \/api\/hive\/(pair|unpair|cloud-signin|cloud-code|cloud-signout)$/,
+  /^POST \/api\/cameras$/,
+  /^DELETE \/api\/cameras\/[\w-]+$/,
+  /^POST \/api\/ring\/(signin|code|signout|hide)$/,
+  /^POST \/api\/yale\/(signin|signout)$/,
+  /^(POST|DELETE) \/api\/trains\/key$/,
+  /^POST \/api\/trains\/source$/,
+];
+
 async function api(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
   const ip = clientIp(req);
@@ -177,6 +196,18 @@ async function api(req, res, url) {
     const [lights, tv] = await Promise.all([hue.summary().catch((e) => ({ error: e.message })), sky.summary().catch(() => [])]);
     return send(res, 200, { lights, tv, android: android.summary(), smarttv: smarttv.summary(), ring: ring.summary(), yale: yale.summary(), weather: weather.summary(), trains: trains.summary(), cameras: cameras.summary(), routines: routines.summary(), hive: hive.summary(), network: netmon.summary(), version: VERSION, at: new Date().toISOString() });
   }
+  // --- Settings lock (alarm PIN) ---------------------------------------------------------------------
+  if (route === 'POST /api/settings/unlock') {
+    try { yale.checkPin((await readJson(req)).pin); } catch (e) { return send(res, e.status ?? 403, { error: e.message }); }
+    console.log(new Date().toISOString(), `settings unlocked from ${ip}`);
+    return send(res, 200, { ok: true, minutes: auth.UNLOCK_MINUTES }, { 'Set-Cookie': auth.unlockCookie() });
+  }
+  if (route === 'POST /api/settings/lock') return send(res, 200, { ok: true }, { 'Set-Cookie': auth.lockCookie() });
+  if (SETTINGS_ROUTES.some((r) => r.test(route)) && yale.pinSet()) {
+    if (!auth.settingsUnlocked(req)) return send(res, 423, { error: 'Settings are locked — enter the alarm PIN', locked: true });
+    res.setHeader('Set-Cookie', auth.unlockCookie()); // still in use: keep it open a few more minutes
+  }
+
   if (route === 'POST /api/hue/pair') return send(res, 200, await hue.pair().catch((e) => ({ ok: false, error: `Bridge not answering (${e.name})` })));
 
   let m;
@@ -432,7 +463,7 @@ async function api(req, res, url) {
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
 
-  if (route === 'GET /api/settings') return send(res, 200, publicSettings());
+  if (route === 'GET /api/settings') return send(res, 200, { ...publicSettings(), locking: yale.pinSet() });
   if (route === 'POST /api/settings') {
     const body = await readJson(req);
     try { applySettings(body); cameras.update(body.cameras ?? []); } catch (e) { return send(res, 400, { error: e.message }); }

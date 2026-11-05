@@ -59,6 +59,7 @@ export function signOut() {
 }
 
 export const isSignedIn = () => Boolean(cfg().refreshToken);
+export const pinSet = () => Boolean(cfg().pin?.hash);
 
 async function accessToken() {
   const c = cfg();
