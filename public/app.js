@@ -235,6 +235,7 @@ function buildNav() {
   $('#tabbar').replaceChildren(...PAGES.filter((p) => !p.desktopOnly && !p.hidden && p.id !== 'settings').map((p) => h('a', { href: `#/${p.id}`, 'data-page': p.id }, icon(p.icon), p.label.replace('TV ', ''))));
   $('#mobile-settings').replaceChildren(icon('settings'));
   $('#mobile-routines').replaceChildren(icon('clock'));
+  $('#mobile-hallway').replaceChildren(icon('shield'));
   $('#mobile-network').replaceChildren(icon('network'));
 }
 
