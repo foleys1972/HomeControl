@@ -1033,3 +1033,7 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .lt.compact .lt-text b { font-size: .9rem; }
 .lt.compact .lt-steps { gap: 2px; padding: 4px; }
 .hall .hall-lights { padding: 14px; }
+
+/* routine "When" choices: five options wrap onto two rows on a phone */
+.seg.wrap { display: flex; flex-wrap: wrap; }
+.seg.wrap button { flex: 1 1 auto; min-height: 44px; justify-content: center; }

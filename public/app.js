@@ -721,19 +721,38 @@ function yaleSettingsCard() {
 // --- routines ------------------------------------------------------------------------------------------------
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const daysText = (list) => {
+  const days = list.join(',');
+  return days === '0,1,2,3,4,5,6' ? 'Every day' : days === '1,2,3,4,5' ? 'Weekdays' : days === '0,6' ? 'Weekends' : DAY_ORDER.filter((d) => list.includes(d)).map((d) => DAY_NAMES[d]).join(', ');
+};
+const ALARM_WORDS = { armed: 'fully armed', part: 'part armed', disarmed: 'disarmed' };
+const sunText = (t) => (t.offset ? `${Math.abs(t.offset) >= 60 && Math.abs(t.offset) % 60 === 0 ? `${Math.abs(t.offset) / 60} h` : `${Math.abs(t.offset)} min`} ${t.offset < 0 ? 'before' : 'after'} ${t.event}` : `at ${t.event}`);
+function eventText(t) {
+  if (t.source === 'ring') return t.kind === 'ding' ? `When ${t.device || 'the doorbell'} rings` : `When ${t.device || 'a Ring camera'} sees motion`;
+  if (t.source === 'alarm') return `When the alarm is ${ALARM_WORDS[t.mode]}`;
+  const door = t.name || 'a door';
+  return t.state === 'closed' ? `When ${door} closes` : t.minutes ? `When ${door} is left open ${mins(t.minutes * 60)}` : `When ${door} opens`;
+}
+function onlyText(o) {
+  if (!o) return '';
+  return [o.dark === 'dark' ? 'after dark' : o.dark === 'light' ? 'in daylight' : null, o.from ? `${o.from}–${o.to}` : null,
+    o.alarm ? `alarm ${ALARM_WORDS[o.alarm]}` : null].filter(Boolean).join(', ');
+}
 function routineWhen(r) {
   if (r.trigger.type === 'manual') return r.scene ? 'When you tap it · scene button' : 'When you tap Run now';
   if (r.trigger.type === 'once') {
     const d = new Date(r.trigger.at);
     return `Once · ${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
   }
-  const days = r.trigger.days.join(',');
-  const which = days === '0,1,2,3,4,5,6' ? 'Every day' : days === '1,2,3,4,5' ? 'Weekdays' : days === '0,6' ? 'Weekends' : DAY_ORDER.filter((d) => r.trigger.days.includes(d)).map((d) => DAY_NAMES[d]).join(', ');
-  return `${which} at ${r.trigger.time}`;
+  const when = r.trigger.type === 'event' ? eventText(r.trigger)
+    : r.trigger.type === 'sun' ? `${daysText(r.trigger.days)} ${sunText(r.trigger)}`
+    : `${daysText(r.trigger.days)} at ${r.trigger.time}`;
+  const only = onlyText(r.only);
+  return only ? `${when} · only ${only}` : when;
 }
 function routineAction(a) {
   if (a.type === 'alarm') return a.mode === 'home' ? 'Part arm the alarm' : 'Arm the alarm';
-  if (a.type === 'lights') return `${a.name || 'Lights'}: ${a.on ? (a.bri != null ? `dim to ${a.bri}%` : 'on') : 'off'}`;
+  if (a.type === 'lights') return `${a.name || 'Lights'}: ${a.on ? (a.bri != null ? `dim to ${a.bri}%` : 'on') : 'off'}${a.on && a.minutes ? `, off again after ${mins(a.minutes * 60)}` : ''}`;
   if (a.type === 'heating') return `Heating ${a.target}°${a.minutes ? ` for ${mins(a.minutes * 60)}, then back to schedule` : ''}`;
   const legacy = a.box != null && a.device == null; // saved before TV actions: name was the channel
   const tv = (legacy ? null : a.name) || (S.state?.tv ?? []).find((b) => b.id === (a.device ?? a.box))?.name || a.device || a.box;
@@ -741,9 +760,15 @@ function routineAction(a) {
   if (what === 'channel') return `${tv}: switch to ${(legacy ? a.name : a.channel) || 'channel'}`;
   return `${tv}: ${{ on: 'turn on', off: 'turn off', volume: `volume ${a.level}`, mute: 'mute', unmute: 'unmute', app: `open ${a.app}` }[what]}`;
 }
+const lastRanText = (ms) => {
+  const d = new Date(ms);
+  const today = d.toDateString() === new Date().toDateString();
+  return `Last ran ${today ? 'today' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+};
 function routineNext(r) {
   if (r.trigger.type === 'manual') return '';
   if (!r.enabled) return r.trigger.type === 'once' && r.lastRun ? 'Done' : 'Off';
+  if (r.trigger.type === 'event') return r.lastRun ? lastRanText(r.lastRun) : 'Waiting';
   if (!r.next) return '';
   const d = new Date(r.next);
   const today = d.toDateString() === new Date().toDateString();
@@ -756,7 +781,7 @@ async function routinesApi(method, url, body, note) {
 function renderRoutines(main) {
   const list = S.state?.routines ?? [];
   // with no routines yet, the empty card has its own New routine button
-  main.replaceChildren(pageHead('Routines', 'Lights, heating and TV on a schedule — run by the server, so your phone can be off',
+  main.replaceChildren(pageHead('Routines', 'Lights, heating and TV on a schedule or when something happens — run by the server, so your phone can be off',
     list.length ? h('button', { class: 'btn primary', onclick: () => routineEditor() }, icon('plus'), 'New routine') : null));
   if (!list.length) {
     main.append(h('div', { class: 'card' }, h('h3', {}, 'No routines yet'),
@@ -767,7 +792,7 @@ function renderRoutines(main) {
   const sorted = [...list].sort((a, b) => (b.enabled - a.enabled) || ((a.next ?? Infinity) - (b.next ?? Infinity)));
   main.append(h('div', { class: 'routine-list' }, sorted.map((r) => h('div', { class: `card routine ${r.enabled ? '' : 'off'}` },
     h('div', { class: 'routine-head' },
-      h('div', { class: 'ico' }, icon(r.scene ? r.scene.icon : r.programme ? 'guide' : 'clock')),
+      h('div', { class: 'ico' }, icon(r.scene ? r.scene.icon : r.programme ? 'guide' : routineIcon(r.trigger))),
       h('div', { class: 'tv-text' }, h('b', {}, r.name), h('small', {}, routineWhen(r))),
       r.trigger.type === 'manual' ? h('span') : h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `${r.name} on/off`,
         onchange: (e) => routinesApi('POST', `/api/routines/${r.id}/${e.target.checked ? 'enable' : 'disable'}`) }), h('span'))),
@@ -781,6 +806,9 @@ function renderRoutines(main) {
           if (await confirmSheet(`Delete "${r.name}"?`, 'It stops running. Nothing else changes.', 'Delete')) routinesApi('DELETE', `/api/routines/${r.id}`, null, 'Routine deleted');
         } }, icon('x'), 'Delete')))))));
 }
+
+const routineIcon = (t) => (t.type === 'sun' ? (t.event === 'sunset' ? 'moon' : 'sun')
+  : t.type !== 'event' ? 'clock' : t.source === 'ring' ? (t.kind === 'ding' ? 'bell' : 'eye') : t.source === 'alarm' ? 'shield' : 'door');
 
 // datetime-local value (local time) <-> ms
 const toLocalInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000); return d.toISOString().slice(0, 16); };
@@ -841,17 +869,100 @@ function routineEditor(r = null, preset = null) {
 
   // when
   const time = h('input', { type: 'time', value: draft.trigger.type === 'daily' ? draft.trigger.time : '20:00', 'aria-label': 'Time' });
-  let days = new Set(draft.trigger.type === 'daily' ? draft.trigger.days : [0, 1, 2, 3, 4, 5, 6]);
+  let days = new Set(draft.trigger.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const dayChips = h('div', { class: 'chips day-chips' }, DAY_ORDER.map((d) => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(days.has(d)), onclick: (e) => {
     days.has(d) ? days.delete(d) : days.add(d);
     e.currentTarget.setAttribute('aria-pressed', String(days.has(d)));
   } }, DAY_NAMES[d])));
   const at = h('input', { type: 'datetime-local', value: toLocalInput(draft.trigger.type === 'once' ? draft.trigger.at : Date.now() + 3_600_000), 'aria-label': 'Date and time' });
-  const daily = h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Time', time), h('div', { class: 'field' }, 'Days', dayChips));
+  const daily = h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Time', time));
   const once = h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Date and time', at));
+  const daysField = h('div', { class: 'fields' }, h('div', { class: 'field' }, 'Days', dayChips));
+
+  // sunrise / sunset
+  const st = draft.trigger.type === 'sun' ? draft.trigger : { event: 'sunset', offset: 0 };
+  const sunEvent = h('select', { 'aria-label': 'Sunrise or sunset' }, [['sunset', 'Sunset'], ['sunrise', 'Sunrise']].map(([v, l]) => h('option', { value: v, selected: st.event === v }, l)));
+  const OFFSETS = [-120, -60, -45, -30, -15, 0, 15, 30, 45, 60, 120];
+  if (!OFFSETS.includes(st.offset)) OFFSETS.push(st.offset);
+  const sunOffset = h('select', { 'aria-label': 'Before or after' }, OFFSETS.sort((x, y) => x - y).map((m) =>
+    h('option', { value: m, selected: st.offset === m }, m === 0 ? 'Exactly then' : `${mins(Math.abs(m) * 60)} ${m < 0 ? 'before' : 'after'}`)));
+  const noPlace = !S.state?.weather?.location;
+  const placeNote = h('p', { class: 'muted' }, noPlace ? 'Sunset times need your location: pick it in the weather box on the Hallway screen first.'
+    : `Sunset and sunrise for ${S.state.weather.location.name}, worked out each day.`);
+  const sunFields = h('div', { class: 'fields' }, h('label', { class: 'field' }, 'At', sunEvent), h('label', { class: 'field' }, 'When', sunOffset), placeNote);
+
+  // when something happens: only the things this house has
+  const ringDevs = S.state?.ring?.signedIn ? (S.state.ring.devices ?? []).filter((d) => !d.hidden && d.type !== 'chime') : [];
+  const yaleOn = Boolean(S.state?.yale?.signedIn);
+  const doors = yaleOn ? (S.state.yale.sensors ?? []).filter((x) => x.open != null || x.kind === 'door') : [];
+  const EVENTS = [
+    ...(ringDevs.some((d) => d.type === 'doorbell') ? [['ring:ding', 'The doorbell rings']] : []),
+    ...(ringDevs.length ? [['ring:motion', 'A Ring camera sees motion']] : []),
+    ...(doors.length ? [['door:open', 'A door opens'], ['door:held', 'A door is left open'], ['door:closed', 'A door closes']] : []),
+    ...(yaleOn ? [['alarm:armed', 'The alarm is fully armed'], ['alarm:part', 'The alarm is part armed'], ['alarm:disarmed', 'The alarm is disarmed']] : []),
+  ];
+  const et = draft.trigger.type === 'event' ? draft.trigger : {};
+  const evKey = et.source === 'ring' ? `ring:${et.kind}` : et.source === 'alarm' ? `alarm:${et.mode}` : et.source === 'door' ? (et.state === 'closed' ? 'door:closed' : et.minutes ? 'door:held' : 'door:open') : '';
+  const evWhat = h('select', { 'aria-label': 'What happens' }, EVENTS.map(([v, l]) => h('option', { value: v, selected: v === evKey }, l)));
+  const ringDev = h('select', { 'aria-label': 'Which Ring device' });
+  const fillRing = () => {
+    const doorbellsOnly = evWhat.value === 'ring:ding';
+    ringDev.replaceChildren(h('option', { value: '' }, doorbellsOnly ? 'Any doorbell' : 'Any Ring camera or doorbell'),
+      ...ringDevs.filter((d) => !doorbellsOnly || d.type === 'doorbell').map((d) => h('option', { value: d.name, selected: et.device === d.name }, d.name)));
+  };
+  const doorSel = h('select', { 'aria-label': 'Which door' }, h('option', { value: '' }, 'Any door'),
+    doors.map((d) => h('option', { value: d.id, selected: et.sensor === d.id }, d.name)));
+  const heldFor = h('select', { 'aria-label': 'Open for' }, [2, 5, 10, 15, 30, 60, 120].map((m) => h('option', { value: m, selected: (et.minutes || 10) === m }, mins(m * 60))));
+  const ringWrap = h('label', { class: 'field' }, 'Which one', ringDev);
+  const doorWrap = h('label', { class: 'field' }, 'Which door', doorSel);
+  const heldWrap = h('label', { class: 'field small' }, 'Open for', heldFor);
+  const syncEvent = () => {
+    const v = evWhat.value;
+    ringWrap.hidden = !v.startsWith('ring:'); doorWrap.hidden = !v.startsWith('door:'); heldWrap.hidden = v !== 'door:held';
+    if (v.startsWith('ring:')) fillRing();
+  };
+  evWhat.addEventListener('change', syncEvent); syncEvent();
+  const eventFields = h('div', { class: 'fields' }, EVENTS.length
+    ? [h('label', { class: 'field' }, 'What happens', evWhat), ringWrap, doorWrap, heldWrap,
+      h('p', { class: 'muted' }, 'Ring is checked every 20 seconds and the alarm every 30, so it can take that long to react.')]
+    : h('p', { class: 'muted' }, 'Sign in to Ring or the Yale alarm in Settings to react to the doorbell, doors or the alarm.'));
+  const readEvent = () => {
+    const [src, what] = evWhat.value.split(':');
+    if (src === 'ring') return { type: 'event', source: 'ring', kind: what, device: ringDev.value };
+    if (src === 'alarm') return { type: 'event', source: 'alarm', mode: what };
+    return { type: 'event', source: 'door', sensor: doorSel.value, name: doorSel.value ? doorSel.selectedOptions[0]?.textContent ?? '' : '',
+      state: what === 'closed' ? 'closed' : 'open', minutes: what === 'held' ? Number(heldFor.value) : 0 };
+  };
+
+  // only if…: checked whenever the routine runs by itself
+  const o = draft.only ?? {};
+  const timeOfDay = h('select', { 'aria-label': 'Time of day' }, [['', 'Any time'], ['dark', 'Only after dark'], ['light', 'Only in daylight'], ['between', 'Only between…']].map(([v, l]) =>
+    h('option', { value: v, selected: (o.from ? 'between' : o.dark ?? '') === v }, l)));
+  const from = h('input', { type: 'time', value: o.from ?? '22:00', 'aria-label': 'From' });
+  const to = h('input', { type: 'time', value: o.to ?? '07:00', 'aria-label': 'To' });
+  const betweenWrap = h('div', { class: 'fields' }, h('label', { class: 'field small' }, 'From', from), h('label', { class: 'field small' }, 'To', to));
+  const alarmIf = h('select', { 'aria-label': 'Alarm' }, [['', 'Whatever the alarm is'], ['disarmed', 'Only when disarmed'], ['part', 'Only when part armed'], ['armed', 'Only when fully armed']].map(([v, l]) =>
+    h('option', { value: v, selected: (o.alarm ?? '') === v }, l)));
+  const syncOnly = () => { betweenWrap.hidden = timeOfDay.value !== 'between'; };
+  timeOfDay.addEventListener('change', syncOnly); syncOnly();
+  const onlyField = h('div', { class: 'field' }, 'Only if',
+    h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Time of day', timeOfDay), yaleOn || o.alarm ? h('label', { class: 'field' }, 'Alarm', alarmIf) : null), betweenWrap);
+  const readOnly = () => {
+    const out = {};
+    if (timeOfDay.value === 'dark' || timeOfDay.value === 'light') out.dark = timeOfDay.value;
+    if (timeOfDay.value === 'between') Object.assign(out, { from: from.value, to: to.value });
+    if (alarmIf.value) out.alarm = alarmIf.value;
+    return Object.keys(out).length ? out : null;
+  };
+
   let kind = draft.trigger.type;
-  const showKind = () => { daily.hidden = kind !== 'daily'; once.hidden = kind !== 'once'; };
-  const kindSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'When' }, [['daily', 'Every week'], ['once', 'Once'], ['manual', 'When I tap it']].map(([k, label]) =>
+  const showKind = () => {
+    daily.hidden = kind !== 'daily'; once.hidden = kind !== 'once'; sunFields.hidden = kind !== 'sun'; eventFields.hidden = kind !== 'event';
+    daysField.hidden = kind !== 'daily' && kind !== 'sun';
+    onlyField.hidden = kind === 'manual' || kind === 'once';
+  };
+  const KINDS = [['daily', 'At a time'], ['sun', 'Sunrise / sunset'], ['event', 'When something happens'], ['once', 'Once'], ['manual', 'When I tap it']];
+  const kindSeg = h('div', { class: 'seg wrap', role: 'group', 'aria-label': 'When' }, KINDS.map(([k, label]) =>
     h('button', { type: 'button', 'aria-pressed': String(kind === k), onclick: (e) => {
       kind = k; showKind();
       if (k === 'manual' && !sceneBox.checked) { sceneBox.checked = true; syncScene(); }
@@ -888,15 +999,21 @@ function routineEditor(r = null, preset = null) {
         h('option', { value: v, selected: (a.on === false && v === 'off') || (a.on && a.bri != null && v === 'dim') || (a.on && a.bri == null && v === 'on') }, l)));
       const bri = h('input', { type: 'number', min: 1, max: 100, value: a.bri ?? 30, 'aria-label': 'Brightness %' });
       const briWrap = h('label', { class: 'field small' }, 'Brightness %', bri);
-      const sync = () => { briWrap.hidden = mode.value !== 'dim'; };
+      const forMins = h('select', { 'aria-label': 'How long' }, h('option', { value: '', selected: !a.minutes }, 'Stay on'),
+        [1, 2, 5, 10, 15, 30, 60, 120].map((m) => h('option', { value: m, selected: a.minutes === m }, `Off again after ${mins(m * 60)}`)));
+      const forWrap = h('label', { class: 'field' }, 'How long', forMins);
+      const forNote = h('p', { class: 'muted' }, 'If the light was already on, it stays on.');
+      const sync = () => { briWrap.hidden = mode.value !== 'dim'; forWrap.hidden = mode.value === 'off'; forNote.hidden = mode.value === 'off' || !forMins.value; };
+      forMins.addEventListener('change', sync);
       mode.addEventListener('change', sync); sync();
       read = () => {
         const [k, id] = target.value.split(':');
         const label = target.selectedOptions[0]?.textContent ?? '';
-        return { type: 'lights', kind: k, id, name: label, on: mode.value !== 'off', ...(mode.value === 'dim' ? { bri: Number(bri.value) } : {}) };
+        return { type: 'lights', kind: k, id, name: label, on: mode.value !== 'off', ...(mode.value === 'dim' ? { bri: Number(bri.value) } : {}),
+          ...(mode.value !== 'off' && forMins.value ? { minutes: Number(forMins.value) } : {}) };
       };
       row = h('div', { class: 'routine-row' }, h('div', { class: 'row-ico' }, icon('bulb')),
-        rooms.length ? h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Lights', target), h('label', { class: 'field' }, 'Set to', mode), briWrap)
+        rooms.length ? h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Lights', target), h('label', { class: 'field' }, 'Set to', mode), briWrap, forWrap, forNote)
           : h('p', { class: 'muted' }, 'Pair the Hue bridge in Settings to add lights.'), remove);
       if (!rooms.length) read = null;
     } else if (a.type === 'alarm') {
@@ -955,10 +1072,14 @@ function routineEditor(r = null, preset = null) {
   const save = h('button', { type: 'button', class: 'btn primary' }, r ? 'Save changes' : 'Save routine');
   save.addEventListener('click', async () => {
     msg.textContent = '';
-    if (kind === 'daily' && !days.size) { msg.textContent = 'Pick at least one day'; return; }
+    if ((kind === 'daily' || kind === 'sun') && !days.size) { msg.textContent = 'Pick at least one day'; return; }
+    if (kind === 'event' && !EVENTS.length) { msg.textContent = 'Nothing to react to yet: sign in to Ring or the Yale alarm in Settings'; return; }
     const body = {
       id: r?.id, name: name.value, enabled: draft.enabled !== false, programme: draft.programme ?? null,
-      trigger: kind === 'daily' ? { type: 'daily', time: time.value, days: [...days] } : kind === 'manual' ? { type: 'manual' } : { type: 'once', at: fromLocalInput(at.value) },
+      trigger: kind === 'daily' ? { type: 'daily', time: time.value, days: [...days] } : kind === 'manual' ? { type: 'manual' }
+        : kind === 'sun' ? { type: 'sun', event: sunEvent.value, offset: Number(sunOffset.value), days: [...days] }
+        : kind === 'event' ? readEvent() : { type: 'once', at: fromLocalInput(at.value) },
+      only: kind === 'manual' || kind === 'once' ? null : readOnly(),
       scene: sceneBox.checked ? { icon: sceneIcon } : null,
       actions: readers.map((f) => f()),
     };
@@ -972,7 +1093,7 @@ function routineEditor(r = null, preset = null) {
     h('h2', {}, r ? 'Edit routine' : draft.programme ? 'Set up for this show' : 'New routine'),
     draft.programme ? h('p', { class: 'muted' }, `Runs a minute before ${draft.programme.title} starts.`) : null,
     h('label', { class: 'field' }, 'Name', name),
-    h('div', { class: 'field' }, 'When', kindSeg), daily, once, sceneField,
+    h('div', { class: 'field' }, 'When', kindSeg), daily, sunFields, eventFields, once, daysField, onlyField, sceneField,
     h('div', { class: 'field' }, 'Do this'), rows,
     h('div', { class: 'row add-actions' },
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'lights', on: true }) }, icon('bulb'), 'Lights'),

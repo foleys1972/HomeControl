@@ -8,6 +8,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check public/app.js"
+    "check": "node --check src/server.js && node --check public/app.js",
+    "test": "node --test"
   }
 }

@@ -1,5 +1,6 @@
-// Routines: scheduled actions run by the server ("porch light on at 20:00 every day", "when this programme
-// starts, dim the lounge and warm it to 21°"). Kept in the config file; checked every 15 seconds.
+// Routines: actions run by the server ("porch light on at 20:00 every day", "hall light on when the doorbell rings
+// after dark", "when this programme starts, dim the lounge and warm it to 21°"). Kept in the config file; timed
+// ones are checked every 15 seconds, event ones run when Ring or Yale reports the event.
 // Times are UK time (Europe/London) whatever the server's own clock zone is, so they follow the clock changes.
 import { randomUUID } from 'node:crypto';
 import * as store from './store.js';
@@ -9,9 +10,12 @@ import * as sky from './skyq.js';
 import * as android from './android.js';
 import * as smarttv from './smarttv.js';
 import * as yale from './yale.js';
+import * as events from './events.js';
+import * as sun from './sun.js';
 
 const TZ = 'Europe/London';
 const CATCH_UP_MS = 10 * 60_000; // a routine missed by a restart still runs if we're back within 10 minutes
+const COOLDOWN_MS = 60_000; // an event routine won't run again within a minute (motion comes in bursts)
 const log = (msg) => console.log(new Date().toISOString(), `routines: ${msg}`);
 
 /** { day: 'YYYY-MM-DD', minutes: minutes since midnight, weekday: 0–6 (Sun = 0) } in UK time */
@@ -62,6 +66,12 @@ function cleanAction(a) {
     if (!['group', 'light'].includes(a.kind) || !/^\d+$/.test(String(a.id))) throw new Error('Pick a room or light');
     const out = { type: 'lights', kind: a.kind, id: String(a.id), name: String(a.name ?? '').slice(0, 40), on: Boolean(a.on) };
     if (out.on && a.bri != null) out.bri = Math.max(1, Math.min(100, Math.round(Number(a.bri))));
+    // "on for 5 minutes": switched off again afterwards, unless it was already on
+    if (out.on && a.minutes != null && a.minutes !== '') {
+      const m = Math.round(Number(a.minutes));
+      if (!(m >= 1 && m <= 240)) throw new Error('Lights can stay on for 1 to 240 minutes');
+      out.minutes = m;
+    }
     return out;
   }
   if (a?.type === 'heating') {
@@ -83,9 +93,7 @@ function cleanAction(a) {
 function cleanTrigger(t) {
   if (t?.type === 'daily') {
     if (!TIME_RE.test(String(t.time))) throw new Error('Time must look like 20:00');
-    const days = [...new Set((Array.isArray(t.days) ? t.days : [0, 1, 2, 3, 4, 5, 6]).map(Number).filter((d) => d >= 0 && d <= 6))].sort();
-    if (!days.length) throw new Error('Pick at least one day');
-    return { type: 'daily', time: String(t.time), days };
+    return { type: 'daily', time: String(t.time), days: cleanDays(t.days) };
   }
   if (t?.type === 'once') {
     const at = Number(t.at);
@@ -93,7 +101,63 @@ function cleanTrigger(t) {
     return { type: 'once', at };
   }
   if (t?.type === 'manual') return { type: 'manual' }; // a scene: runs only when someone taps it
+  if (t?.type === 'sun') {
+    if (!['sunrise', 'sunset'].includes(t.event)) throw new Error('Pick sunrise or sunset');
+    const offset = Math.round(Number(t.offset ?? 0));
+    if (!(offset >= -180 && offset <= 180)) throw new Error('Up to 3 hours before or after');
+    const days = cleanDays(t.days);
+    needPlace();
+    return { type: 'sun', event: t.event, offset, days };
+  }
+  if (t?.type === 'event') return cleanEvent(t);
   throw new Error('Choose when the routine runs');
+}
+
+function cleanDays(d) {
+  const days = [...new Set((Array.isArray(d) ? d : [0, 1, 2, 3, 4, 5, 6]).map(Number).filter((x) => x >= 0 && x <= 6))].sort();
+  if (!days.length) throw new Error('Pick at least one day');
+  return days;
+}
+
+// sunset times and "only after dark" need to know where the house is: the place picked for the weather
+const place = () => store.get().weather ?? null;
+function needPlace() {
+  if (!place()) throw new Error('Sunset times need your location: pick it in the weather box on the Hallway screen first');
+}
+
+const RING_KINDS = ['ding', 'motion'];
+const ALARM_MODES = ['armed', 'part', 'disarmed'];
+function cleanEvent(t) {
+  if (t.source === 'ring') {
+    if (!RING_KINDS.includes(t.kind)) throw new Error('Pick doorbell press or motion');
+    return { type: 'event', source: 'ring', kind: t.kind, device: String(t.device ?? '').slice(0, 60) }; // '' = any Ring device
+  }
+  if (t.source === 'alarm') {
+    if (!ALARM_MODES.includes(t.mode)) throw new Error('Pick armed, part armed or disarmed');
+    return { type: 'event', source: 'alarm', mode: t.mode };
+  }
+  if (t.source === 'door') {
+    if (!['open', 'closed'].includes(t.state)) throw new Error('Pick opened or closed');
+    const minutes = t.state === 'open' ? Math.round(Number(t.minutes ?? 0)) : 0;
+    if (!(minutes >= 0 && minutes <= 240)) throw new Error('Left open for up to 240 minutes');
+    // sensor '' = any door
+    return { type: 'event', source: 'door', sensor: String(t.sensor ?? '').slice(0, 80), name: String(t.name ?? '').slice(0, 60), state: t.state, minutes };
+  }
+  throw new Error('Pick what the routine reacts to');
+}
+
+// "Only if…" conditions, checked whenever the routine would run by itself (not when someone taps it)
+function cleanOnly(o) {
+  if (!o) return null;
+  const out = {};
+  if (o.dark === 'dark' || o.dark === 'light') { needPlace(); out.dark = o.dark; }
+  if (o.from || o.to) {
+    if (!TIME_RE.test(String(o.from)) || !TIME_RE.test(String(o.to))) throw new Error('Times must look like 07:00');
+    if (o.from === o.to) throw new Error('The from and to times are the same');
+    Object.assign(out, { from: String(o.from), to: String(o.to) });
+  }
+  if (ALARM_MODES.includes(o.alarm)) out.alarm = o.alarm;
+  return Object.keys(out).length ? out : null;
 }
 
 const SCENE_ICONS = new Set(['home', 'door', 'moon', 'sun', 'tv', 'bulb', 'flame', 'shield', 'power', 'play']);
@@ -112,6 +176,7 @@ function clean(body, prev = {}) {
     name,
     enabled: body.enabled !== false,
     trigger: cleanTrigger(body.trigger),
+    only: cleanOnly(body.only),
     actions,
     scene: cleanScene(body.scene),
     programme: body.programme ? { sid: String(body.programme.sid), title: String(body.programme.title ?? '').slice(0, 80), st: Number(body.programme.st) || null } : prev.programme ?? null,
@@ -145,10 +210,32 @@ export function remove(id) {
 }
 
 // --- running ----------------------------------------------------------------------------------------------
+// lights switched on "for N minutes": key -> { timer, restoreOff }, so a second ring restarts the clock
+const offTimers = new Map();
+async function lightIsOn(a) {
+  const rooms = (await hue.summary().catch(() => null))?.rooms ?? [];
+  if (a.kind === 'group') return Boolean(rooms.find((r) => String(r.id) === a.id)?.on);
+  return Boolean(rooms.flatMap((r) => r.lights ?? []).find((l) => String(l.id) === a.id)?.on);
+}
+
 async function runAction(a) {
   if (a.type === 'lights') {
-    const state = a.on ? (a.bri != null ? { bri: Math.round((a.bri / 100) * 254) } : { on: true }) : { on: false };
-    return a.kind === 'group' ? hue.setGroup(a.id, state) : hue.setLight(a.id, state);
+    const set = (state) => (a.kind === 'group' ? hue.setGroup(a.id, state) : hue.setLight(a.id, state));
+    const key = `${a.kind}:${a.id}`;
+    const pending = offTimers.get(key);
+    if (pending) { clearTimeout(pending.timer); offTimers.delete(key); }
+    // only switch it off afterwards if it was off before (or we'd put out a light someone is using)
+    const restoreOff = a.on && a.minutes ? (pending ? pending.restoreOff : !(await lightIsOn(a))) : false;
+    const result = await set(a.on ? (a.bri != null ? { bri: Math.round((a.bri / 100) * 254) } : { on: true }) : { on: false });
+    if (restoreOff) {
+      const timer = setTimeout(() => {
+        offTimers.delete(key);
+        set({ on: false }).then(() => log(`${a.name || key} off after ${a.minutes} min`), (e) => log(`${a.name || key} off after ${a.minutes} min FAILED: ${e.message}`));
+      }, a.minutes * 60_000);
+      timer.unref?.();
+      offTimers.set(key, { timer, restoreOff });
+    }
+    return result;
   }
   if (a.type === 'heating') {
     // with a duration, boost (Hive returns to its own schedule afterwards); without, set a manual temperature
@@ -176,7 +263,7 @@ async function runAction(a) {
   if (a.type === 'alarm') return yale.armScheduled(a.mode);
 }
 
-const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`} ${a.on ? (a.bri != null ? `${a.bri}%` : 'on') : 'off'}`
+const describe = (a) => (a.type === 'lights' ? `${a.name || `${a.kind} ${a.id}`} ${a.on ? (a.bri != null ? `${a.bri}%` : 'on') : 'off'}${a.on && a.minutes ? ` for ${a.minutes} min` : ''}`
   : a.type === 'heating' ? `heating ${a.target}°${a.minutes ? ` for ${a.minutes} min` : ''}`
   : a.type === 'alarm' ? (a.mode === 'home' ? 'part arm the alarm' : 'arm the alarm')
   : `${a.name || a.device || a.box}: ${a.do === 'channel' || !a.do ? `channel ${a.channel || a.sid}` : a.do === 'volume' ? `volume ${a.level}` : a.do === 'app' ? `open ${a.app}` : a.do}`);
@@ -201,10 +288,62 @@ export async function run(id, why = 'manual', pin) {
   return { ok: !failed.length, results };
 }
 
+/** Sunrise / sunset (plus the routine's offset) on a UK day, as a timestamp; null without a location */
+function sunAt(t, day) {
+  const p = place();
+  if (!p) return null;
+  const s = sun.times(day, p.lat, p.lon);
+  const base = t.event === 'sunset' ? s.set : s.rise;
+  return base == null ? null : base + t.offset * 60_000;
+}
+
+/** Do the routine's "only if…" conditions hold right now? */
+export function allowed(r, now = Date.now()) {
+  const o = r.only;
+  if (!o) return true;
+  if (o.dark) {
+    const p = place();
+    if (!p) return false;
+    if (sun.isDark(now, ukNow(new Date(now)).day, p.lat, p.lon) !== (o.dark === 'dark')) return false;
+  }
+  if (o.from && o.to) {
+    const m = ukNow(new Date(now)).minutes;
+    const toMin = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
+    const from = toMin(o.from);
+    const to = toMin(o.to);
+    if (!(from < to ? m >= from && m < to : m >= from || m < to)) return false; // 22:00–06:00 runs across midnight
+  }
+  if (o.alarm && yale.summary().mode !== o.alarm) return false;
+  return true;
+}
+
+/** Does this event set the routine off? (conditions are checked separately) */
+export function matches(r, e) {
+  const t = r.trigger;
+  if (!r.enabled || t.type !== 'event' || t.source !== e.source) return false;
+  if (t.source === 'ring') return t.kind === e.kind && (!t.device || t.device === e.device);
+  if (t.source === 'alarm') return t.mode === e.mode;
+  if (t.source === 'door') return !t.minutes && t.state === e.state && (!t.sensor || t.sensor === e.sensor);
+  return false;
+}
+
+/** A door left open: true once a matching door has been open for the routine's minutes (once per opening) */
+export function heldOpen(r, sensors, now = Date.now()) {
+  const t = r.trigger;
+  if (!r.enabled || t.type !== 'event' || t.source !== 'door' || !t.minutes || t.state !== 'open') return false;
+  return sensors.some((s) => s.open === true && s.changed && (!t.sensor || t.sensor === s.id)
+    && now - s.changed >= t.minutes * 60_000 && !(r.lastRun >= s.changed));
+}
+
 export function due(r, now = Date.now()) {
-  if (!r.enabled || r.trigger.type === 'manual') return false;
+  if (!r.enabled || r.trigger.type === 'manual' || r.trigger.type === 'event') return false;
   if (r.trigger.type === 'once') return now >= r.trigger.at && now - r.trigger.at < CATCH_UP_MS && !(r.lastRun >= r.trigger.at);
   const uk = ukNow(new Date(now));
+  if (r.trigger.type === 'sun') {
+    if (!r.trigger.days.includes(uk.weekday)) return false;
+    const at = sunAt(r.trigger, uk.day);
+    return at != null && now >= at && now - at < CATCH_UP_MS && !(r.lastRun >= at);
+  }
   if (!r.trigger.days.includes(uk.weekday)) return false;
   const [h, m] = r.trigger.time.split(':').map(Number);
   const late = (uk.minutes - (h * 60 + m)) * 60_000;
@@ -212,12 +351,36 @@ export function due(r, now = Date.now()) {
   return !(r.lastRun && ukNow(new Date(r.lastRun)).day === uk.day && r.lastRun >= now - late - 60_000);
 }
 
+// runs a routine by itself (timed or event), if its conditions hold and it hasn't just run
+const lastAuto = new Map(); // id -> ms
+const skipped = new Map(); // id -> ms: a timed routine whose conditions failed stays "due" for a while; say so once
+async function auto(r, why) {
+  if (!allowed(r)) {
+    if (r.trigger.type !== 'event' && Date.now() - (skipped.get(r.id) ?? 0) < CATCH_UP_MS) return;
+    skipped.set(r.id, Date.now());
+    log(`"${r.name}" (${why}) skipped: its "only if" conditions weren't met`);
+    return;
+  }
+  if (r.trigger.type === 'event' && Date.now() - (lastAuto.get(r.id) ?? 0) < COOLDOWN_MS) return;
+  lastAuto.set(r.id, Date.now());
+  await run(r.id, why).catch((e) => log(`"${r.name}" failed: ${e.message}`));
+}
+
+const eventWhy = (e) => (e.source === 'ring' ? `${e.device || 'Ring'} ${e.kind === 'ding' ? 'rang' : 'saw motion'}`
+  : e.source === 'alarm' ? `alarm ${e.mode}` : `${e.name || 'door'} ${e.state === 'open' ? 'opened' : 'closed'}`);
+
 export function start() {
+  events.on((e) => { for (const r of list().filter((x) => matches(x, e))) auto(r, eventWhy(e)); });
   let busy = false;
   const tick = async () => {
     if (!busy) {
       busy = true;
-      for (const r of list().filter((x) => due(x))) await run(r.id, 'scheduled').catch((e) => log(`"${r.name}" failed: ${e.message}`));
+      for (const r of list().filter((x) => due(x))) await auto(r, 'scheduled');
+      const sensors = yale.summary().sensors ?? [];
+      for (const r of list().filter((x) => heldOpen(x, sensors))) {
+        lastAuto.delete(r.id); // fires once per opening anyway, so no cooldown
+        await auto(r, `${r.trigger.name || 'a door'} open ${r.trigger.minutes} min`);
+      }
       // tidy up one-off routines a day after they ran
       const stale = list().filter((r) => r.trigger.type === 'once' && !r.enabled && r.lastRun && Date.now() - r.lastRun > 86_400_000);
       if (stale.length) store.update((c) => { c.routines = c.routines.filter((r) => !stale.some((s) => s.id === r.id)); });
@@ -230,8 +393,17 @@ export function start() {
 
 /** For the UI: next run time (ms) of a routine, or null */
 export function nextRun(r, now = Date.now()) {
-  if (!r.enabled || r.trigger.type === 'manual') return null;
+  if (!r.enabled || r.trigger.type === 'manual' || r.trigger.type === 'event') return null;
   if (r.trigger.type === 'once') return r.trigger.at > now ? r.trigger.at : null;
+  if (r.trigger.type === 'sun') {
+    for (let d = 0; d < 8; d++) {
+      const uk = ukNow(new Date(now + d * 86_400_000));
+      if (!r.trigger.days.includes(uk.weekday)) continue;
+      const at = sunAt(r.trigger, uk.day);
+      if (at != null && at > now) return at - (at % 60_000);
+    }
+    return null;
+  }
   for (let d = 0; d < 8; d++) {
     const probe = now + d * 86_400_000;
     const uk = ukNow(new Date(probe));

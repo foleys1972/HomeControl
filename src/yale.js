@@ -5,6 +5,7 @@
 // The API is unofficial and can change.
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import * as store from './store.js';
+import * as events from './events.js';
 
 const HOST = 'https://mob.yalehomesystem.co.uk/yapi';
 const CLIENT = 'VnVWWDZYVjlXSUNzVHJhcUVpdVNCUHBwZ3ZPakxUeXNsRU1LUHBjdTpkd3RPbE15WEtENUJ5ZW1GWHV0am55eGhrc0U3V0ZFY2p0dFcyOXRaSWNuWHlSWHFsWVBEZ1BSZE1xczF4R3VwVTlxa1o4UE5ubGlQanY5Z2hBZFFtMHpsM0h4V3dlS0ZBcGZzakpMcW1GMm1HR1lXRlpad01MRkw3MGR0bmNndQ=='; // the Yale app's public client id, as yale-smart-alarm-client sends it
@@ -56,6 +57,7 @@ export async function signIn(email, password) {
 export function signOut() {
   store.update((c) => { c.yale = { pin: c.yale?.pin }; });
   cache = { at: 0, mode: null, sensors: [] };
+  seen = null;
 }
 
 export const isSignedIn = () => Boolean(cfg().refreshToken);
@@ -122,12 +124,33 @@ export async function refresh(force = false) {
   const [mode, devices] = await Promise.all([api('GET', '/api/panel/mode/'), api('GET', '/api/panel/device_status/')]);
   const raw = Array.isArray(mode.data) ? mode.data[0]?.mode : null;
   cache = { at: Date.now(), mode: MODES[raw] ?? null, sensors: (Array.isArray(devices.data) ? devices.data : []).map(sensor), error: null };
+  observe();
   return cache;
+}
+
+// Changes since the last look become events for routines ("alarm armed", "back door opened"). The first look
+// after a start only sets the baseline. changed: when we saw each door's open / closed state change (or first
+// saw it), for "left open for 10 minutes".
+let seen = null; // { mode, open: Map id -> boolean }
+const changed = new Map(); // sensor id -> ms
+function observe() {
+  const now = Date.now();
+  const open = new Map(cache.sensors.filter((s) => s.open != null).map((s) => [s.id, s.open]));
+  if (seen) {
+    if (cache.mode && seen.mode && cache.mode !== seen.mode) events.emit({ source: 'alarm', mode: cache.mode, prev: seen.mode });
+    for (const [id, isOpen] of open) {
+      if (!seen.open.has(id) || seen.open.get(id) === isOpen) continue;
+      changed.set(id, now);
+      events.emit({ source: 'door', sensor: id, name: cache.sensors.find((s) => s.id === id)?.name ?? '', state: isOpen ? 'open' : 'closed' });
+    }
+  }
+  for (const id of open.keys()) if (!changed.has(id)) changed.set(id, now);
+  seen = { mode: cache.mode ?? seen?.mode ?? null, open };
 }
 
 export function summary() {
   const c = cfg();
-  return { signedIn: Boolean(c.refreshToken), account: c.email ?? null, pinSet: Boolean(c.pin?.hash), mode: cache.mode, sensors: cache.sensors, at: cache.at || null, error: cache.error ?? null };
+  return { signedIn: Boolean(c.refreshToken), account: c.email ?? null, pinSet: Boolean(c.pin?.hash), mode: cache.mode, sensors: cache.sensors.map((x) => (x.open != null ? { ...x, changed: changed.get(x.id) ?? null } : x)), at: cache.at || null, error: cache.error ?? null };
 }
 
 export function start() {
@@ -145,6 +168,7 @@ async function setMode(mode) {
   const r = await api('POST', '/api/panel/mode/', { area: '1', mode });
   if (r.code !== '000') throw new Error(r.message ? `Yale refused: ${r.message}` : 'Yale refused the change');
   cache = { ...cache, mode: MODES[mode] };
+  observe();
   setTimeout(() => refresh(true).catch(() => {}), 3000);
   log(`${mode} ok`);
   return { ok: true, mode: MODES[mode] };

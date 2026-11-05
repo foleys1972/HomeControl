@@ -4,6 +4,7 @@
 // this server's hardware id live in the data dir (mode 600). The API is unofficial and can change.
 import { randomUUID } from 'node:crypto';
 import * as store from './store.js';
+import * as events from './events.js';
 
 const OAUTH = 'https://oauth.ring.com/oauth/token';
 const API = 'https://api.ring.com/clients_api';
@@ -79,6 +80,7 @@ export function signOut() {
   pending = null;
   store.update((c) => { c.ring = { hardwareId: c.ring?.hardwareId, hidden: c.ring?.hidden }; });
   cache = { at: 0, devices: [], events: [] };
+  seenEvents = null;
 }
 
 export const isSignedIn = () => Boolean(cfg().refreshToken);
@@ -155,8 +157,30 @@ export async function devices(force = false) {
   const list = [];
   for (const group of ['doorbots', 'authorized_doorbots', 'stickup_cams', 'chimes']) for (const d of all[group] ?? []) list.push(shape(d, group));
   cache = { ...cache, at: Date.now(), devices: list, events: await recentEvents(list).catch((e) => { log(`events failed: ${e.message}`); return cache.events; }) };
+  observe(cache.events);
   return list;
 }
+
+/** Just the event lists (no device refresh), for the quicker check while a routine waits on the doorbell. */
+async function pollEvents() {
+  if (!cache.devices.length) return devices(true);
+  cache = { ...cache, events: await recentEvents(cache.devices) };
+  observe(cache.events);
+}
+
+// New rings and motion become events for routines. The first look after a start only remembers what's
+// there; anything older than 5 minutes (a late-arriving history entry) is ignored.
+let seenEvents = null; // Set of event ids
+function observe(list) {
+  const fresh = seenEvents ? list.filter((e) => !seenEvents.has(e.id) && Date.now() - new Date(e.at).getTime() < 5 * 60_000) : [];
+  seenEvents = new Set([...(seenEvents ?? []), ...list.map((e) => e.id)].slice(-300));
+  const hidden = hiddenIds();
+  const hiddenNames = new Set(cache.devices.filter((d) => hidden.has(String(d.id))).map((d) => d.name));
+  for (const e of fresh.reverse()) if (!hiddenNames.has(e.device)) events.emit({ source: 'ring', kind: e.kind, device: e.device });
+}
+
+// Poll every 20 s instead of every minute while an enabled routine is waiting for a ring or motion
+const wantsQuick = () => (store.get().routines ?? []).some((r) => r.enabled && r.trigger?.type === 'event' && r.trigger.source === 'ring');
 
 // Per-camera event lists (as ring-client-api's getEvents), merged newest first; the older account-wide
 // doorbots/history endpoint is the fallback.
@@ -192,9 +216,12 @@ export function summary() {
 export function start() {
   const tick = async () => {
     if (isSignedIn()) {
-      try { await devices(); cache.error = null; } catch (e) { cache.error = e.message; }
+      try {
+        if (Date.now() - cache.at >= 58_000) await devices(true); else await pollEvents();
+        cache.error = null;
+      } catch (e) { cache.error = e.message; }
     }
-    setTimeout(tick, 60_000);
+    setTimeout(tick, wantsQuick() ? 20_000 : 60_000);
   };
   tick();
 }

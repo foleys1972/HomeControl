@@ -11,6 +11,10 @@ Local-only home dashboard, plain JavaScript with no dependencies:
 - **Network health**: router/internet reachability, Cisco switch status, event log.
 - **Routines** run by the server (lights, heating, TVs, arming the alarm): daily ("porch light on at 20:00") or one-off; from the TV Guide, "Set up for this
   show" dims the lights, boosts the heating and switches the Sky box just before a programme starts.
+  Routines can also run at **sunrise or sunset** (worked out on the server for the place picked on the hallway screen) or
+  **when something happens**: the doorbell rings, a Ring camera sees motion, a door opens, closes or is left open, the
+  alarm is armed or disarmed. "Only if" conditions (after dark, between two times, alarm state) and lights that switch
+  off again after a few minutes make "hall light on for 5 minutes when the doorbell rings after dark" one routine.
   A routine can also be a **scene**: a one-tap button on Home and the hallway screen ("Leaving", "Movie night"), with
   or without a schedule.
 - **Any phone or tablet** on the home network: Add to Home Screen installs it like an app, and `/#/wall` is an
