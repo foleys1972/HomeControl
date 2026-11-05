@@ -17,6 +17,7 @@ import * as hive from './hive.js';
 import * as smarttv from './smarttv.js';
 import * as ring from './ring.js';
 import * as yale from './yale.js';
+import * as settingsLock from './settingslock.js';
 import * as weather from './weather.js';
 import * as trains from './trains.js';
 import * as routines from './routines.js';
@@ -147,10 +148,10 @@ function applySettings(body) {
   });
 }
 
-// Requests that change Home Control's setup (what's on the Settings page). Once an alarm PIN is set they need the
-// PIN, entered in the last few minutes on that device, so someone at the hallway screen can't change them.
-// Changing the PIN itself is left out: it needs the Yale account password instead (and is the way back in if
-// the PIN is forgotten).
+// Requests that change Home Control's setup (what's on the Settings page). Once a Settings PIN or alarm PIN is set
+// they need the PIN, entered in the last few minutes on that device, so someone at a wall screen can't change them.
+// Setting either PIN is left out: they need the Home Control or Yale password instead (and are the way back in if a
+// PIN is forgotten).
 const SETTINGS_ROUTES = [
   /^(GET|POST) \/api\/settings$/,
   /^POST \/api\/hue\/(pair|search)$/,
@@ -198,13 +199,20 @@ async function api(req, res, url) {
   }
   // --- Settings lock (alarm PIN) ---------------------------------------------------------------------
   if (route === 'POST /api/settings/unlock') {
-    try { yale.checkPin((await readJson(req)).pin); } catch (e) { return send(res, e.status ?? 403, { error: e.message }); }
+    try { settingsLock.check((await readJson(req)).pin); } catch (e) { return send(res, e.status ?? 403, { error: e.message }); }
     console.log(new Date().toISOString(), `settings unlocked from ${ip}`);
     return send(res, 200, { ok: true, minutes: auth.UNLOCK_MINUTES }, { 'Set-Cookie': auth.unlockCookie() });
   }
   if (route === 'POST /api/settings/lock') return send(res, 200, { ok: true }, { 'Set-Cookie': auth.lockCookie() });
-  if (SETTINGS_ROUTES.some((r) => r.test(route)) && yale.pinSet()) {
-    if (!auth.settingsUnlocked(req)) return send(res, 423, { error: 'Settings are locked — enter the alarm PIN', locked: true });
+  if (route === 'POST /api/settings/pin') {
+    const b = await readJson(req);
+    try { return send(res, 200, settingsLock.setPin(ip, b.pin, b.password), { 'Set-Cookie': auth.unlockCookie() }); } catch (e) { return send(res, e.status ?? 400, { error: e.message }); }
+  }
+  if (route === 'POST /api/settings/pin/remove') {
+    try { return send(res, 200, settingsLock.removePin(ip, (await readJson(req)).password)); } catch (e) { return send(res, e.status ?? 400, { error: e.message }); }
+  }
+  if (SETTINGS_ROUTES.some((r) => r.test(route)) && settingsLock.active()) {
+    if (!auth.settingsUnlocked(req)) return send(res, 423, { error: 'Settings are locked — enter the PIN', locked: true });
     res.setHeader('Set-Cookie', auth.unlockCookie()); // still in use: keep it open a few more minutes
   }
 
@@ -463,7 +471,9 @@ async function api(req, res, url) {
     } catch (e) { return send(res, 400, { error: e.message }); }
   }
 
-  if (route === 'GET /api/settings') return send(res, 200, { ...publicSettings(), locking: yale.pinSet() });
+  if (route === 'GET /api/settings') {
+    return send(res, 200, { ...publicSettings(), locking: settingsLock.active(), settingsPinSet: settingsLock.ownPinSet(), alarmPinSet: yale.pinSet() });
+  }
   if (route === 'POST /api/settings') {
     const body = await readJson(req);
     try { applySettings(body); cameras.update(body.cameras ?? []); } catch (e) { return send(res, 400, { error: e.message }); }

@@ -123,7 +123,7 @@ function unlockSettings() {
     if (sheet.open) sheet.close();
     let unlocked = false;
     pinSheet({ pinSet: true }, {
-      title: 'Unlock Settings', verb: 'Unlock', done: 'Settings unlocked',
+      title: 'Unlock Settings', verb: 'Unlock', done: 'Settings unlocked', hint: 'Enter the Settings PIN or the alarm PIN.',
       send: async (pin) => { await api('POST', '/api/settings/unlock', { pin }); unlocked = true; },
     });
     sheet.addEventListener('close', () => resolve(unlocked), { once: true });
@@ -581,7 +581,7 @@ function alarmSection(y) {
   return [h('div', { class: 'section-title' }, h('h2', {}, 'Alarm')), alarmCard(y)];
 }
 // PIN pad for anything that changes the alarm: arming, disarming, or running a routine that arms it
-function pinSheet(y, { title = 'Disarm the alarm', verb = 'Disarm', send = (pin) => api('POST', '/api/yale/disarm', { pin }), done = 'Alarm disarmed' } = {}) {
+function pinSheet(y, { title = 'Disarm the alarm', verb = 'Disarm', send = (pin) => api('POST', '/api/yale/disarm', { pin }), done = 'Alarm disarmed', hint = 'Enter your Home Control alarm PIN.' } = {}) {
   if (!y?.pinSet) { toast('Set an alarm PIN in Settings first'); location.hash = '#/settings'; return; }
   const sheet = $('#sheet');
   let pin = '';
@@ -601,7 +601,7 @@ function pinSheet(y, { title = 'Disarm the alarm', verb = 'Disarm', send = (pin)
   const key = (label, fn, aria) => h('button', { type: 'button', class: 'pin-key', 'aria-label': aria ?? label, onclick: () => { fn(); msg.textContent = ''; show(); } }, label);
   const digit = (d) => key(String(d), () => { if (pin.length < 8) pin += d; });
   sheet.replaceChildren(h('div', { class: 'sheet-card' }, h('div', { class: 'sheet-body pad-top pin-sheet' },
-    h('h2', {}, title), h('p', { class: 'syn' }, 'Enter your Home Control alarm PIN.'), dots,
+    h('h2', {}, title), h('p', { class: 'syn' }, hint), dots,
     h('div', { class: 'pinpad' }, [1, 2, 3, 4, 5, 6, 7, 8, 9].map(digit), key('Clear', () => { pin = ''; }, 'Clear PIN'), digit(0), key('⌫', () => { pin = pin.slice(0, -1); }, 'Delete last digit')),
     msg, h('div', { class: 'actions' }, ok, h('button', { class: 'btn block', onclick: () => sheet.close() }, 'Cancel')))));
   show();
@@ -2132,7 +2132,7 @@ async function renderSettings(main) {
     if (!e.locked) throw e;
     main.replaceChildren(h('div', { class: 'card settings-locked' }, icon('lock'),
       h('h3', {}, 'Settings are locked'),
-      h('p', { class: 'desc' }, 'Enter the alarm PIN to change settings. They lock again after 5 minutes without changes.'),
+      h('p', { class: 'desc' }, 'Enter the Settings PIN or the alarm PIN to change settings. They lock again after 5 minutes without changes.'),
       h('button', { type: 'button', class: 'btn primary', onclick: () => rerender() }, icon('lock'), 'Unlock')));
     return;
   }
@@ -2144,6 +2144,7 @@ async function renderSettings(main) {
       h('button', { type: 'button', class: 'btn', onclick: async () => {
         try { await api('POST', '/api/settings/lock'); toast('Settings locked'); location.hash = '#/home'; } catch (e) { toast(e.message); }
       } }, 'Lock now')) : null,
+    settingsPinCard(s),
     h('div', { class: 'card' }, h('h3', {}, 'Philips Hue'), pairMsg,
       h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Bridge IP', h('input', { name: 'hue.ip', value: s.hue.ip ?? '', placeholder: 'Hue bridge IP address', inputmode: 'decimal' }))),
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: async () => {
@@ -2211,6 +2212,34 @@ async function renderSettings(main) {
     }
   });
   main.replaceChildren(pageHead('Settings', 'Devices and account'), form);
+}
+
+// Settings PIN: locks Settings without needing an alarm; set or removed with the Home Control password
+function settingsPinCard(s) {
+  const set = Boolean(s.settingsPinSet);
+  const pin = h('input', { type: 'password', inputmode: 'numeric', autocomplete: 'off', maxlength: 8, placeholder: '4 to 8 digits', 'aria-label': set ? 'New Settings PIN' : 'Settings PIN' });
+  // new-password stops the browser filling in the saved login, which would let anyone at a wall screen use it
+  const pw = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Home Control password' });
+  const msg = h('p', { class: 'desc', role: 'status' });
+  const save = h('button', { type: 'button', class: 'btn primary', onclick: async () => {
+    save.disabled = true;
+    try { await api('POST', '/api/settings/pin', { pin: pin.value, password: pw.value }); toast(set ? 'Settings PIN changed' : 'Settings PIN set'); rerender(); }
+    catch (e) { msg.textContent = e.message; }
+    save.disabled = false;
+  } }, set ? 'Change PIN' : 'Set PIN');
+  return h('div', { class: 'card' }, h('h3', {}, 'Settings lock'),
+    h('p', { class: 'desc' }, set
+      ? `Settings are locked with your Settings PIN${s.alarmPinSet ? ' (the alarm PIN unlocks them too)' : ''}. To change or remove it, enter your Home Control password.`
+      : s.alarmPinSet ? 'Settings are locked with the alarm PIN. You can add a separate Settings PIN as well; either one unlocks them.'
+        : 'Settings aren’t locked, so anyone at a wall screen can change them. Set a PIN to lock them; it needs your Home Control password.'),
+    h('div', { class: 'fields' }, h('label', { class: 'field' }, set ? 'New Settings PIN' : 'Settings PIN', pin), h('label', { class: 'field' }, 'Home Control password', pw)),
+    h('div', { class: 'row' }, save,
+      set ? h('button', { type: 'button', class: 'btn ghost remove', onclick: async () => {
+        if (!pw.value) { msg.textContent = 'Enter your Home Control password to remove the PIN.'; return; }
+        if (!(await confirmSheet('Remove the Settings PIN?', s.alarmPinSet ? 'Settings stay locked with the alarm PIN.' : 'Settings won’t be locked any more.', 'Remove'))) return;
+        try { await api('POST', '/api/settings/pin/remove', { password: pw.value }); toast('Settings PIN removed'); rerender(); } catch (e) { msg.textContent = e.message; }
+      } }, icon('x'), 'Remove') : null),
+    msg);
 }
 
 function trainsSettingsCard(s) {

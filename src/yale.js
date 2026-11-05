@@ -194,12 +194,17 @@ export async function setPin(pin, password) {
   return { ok: true };
 }
 
+/** True if `pin` is the alarm PIN. Doesn't count wrong tries — callers do (checkPin below, the Settings lock). */
+export function pinMatches(pin) {
+  const p = cfg().pin;
+  return Boolean(p?.hash) && /^\d{4,8}$/.test(String(pin ?? '')) && timingSafeEqual(Buffer.from(pinHash(pin, p.salt), 'hex'), Buffer.from(p.hash, 'hex'));
+}
+
 export function checkPin(pin) {
   const p = cfg().pin;
   if (!p?.hash) throw refuse(400, 'Set an alarm PIN in Settings first');
   if (failures.until > Date.now()) throw refuse(429, `Too many wrong PINs — try again in ${Math.ceil((failures.until - Date.now()) / 60_000)} min`);
-  const ok = /^\d{4,8}$/.test(String(pin ?? '')) && timingSafeEqual(Buffer.from(pinHash(pin, p.salt), 'hex'), Buffer.from(p.hash, 'hex'));
-  if (ok) { failures.count = 0; return; }
+  if (pinMatches(pin)) { failures.count = 0; return; }
   failures.count += 1;
   if (failures.count >= 5) { failures.until = Date.now() + 5 * 60_000; failures.count = 0; log('alarm PIN locked for 5 minutes after wrong PINs'); }
   throw refuse(403, 'Wrong PIN');
