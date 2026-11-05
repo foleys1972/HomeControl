@@ -11,6 +11,8 @@ Local-only home dashboard, plain JavaScript with no dependencies:
 - **Network health**: router/internet reachability, Cisco switch status, event log.
 - **Routines** run by the server (lights, heating, TVs, arming the alarm): daily ("porch light on at 20:00") or one-off; from the TV Guide, "Set up for this
   show" dims the lights, boosts the heating and switches the Sky box just before a programme starts.
+  A routine can also be a **scene**: a one-tap button on Home and the hallway screen ("Leaving", "Movie night"), with
+  or without a schedule.
 - **Any phone or tablet** on the home network: Add to Home Screen installs it like an app, and `/#/wall` is an
   always-on wall-tablet dashboard (clock, doorbell, alarm, heating, lights, TV, upcoming routines). The Hallway tab
   (`/#/hallway`) is a TV-free panel: alarm and its devices, heating, lights, cameras and weather

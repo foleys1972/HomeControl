@@ -343,8 +343,79 @@ async function launchApp(boxId, app) {
     setTimeout(refresh, 4000);
   } catch (e) { toast(e.message); }
 }
+// Lights change on screen at once; the bridge catches up. If the bridge says no, the change is undone.
+// S.pending holds what we asked for until the polled state agrees (or 15 s pass), so a poll that lands
+// mid-request doesn't flick the tile back.
+S.pending = new Map();
+function applyPending(state) {
+  const rooms = state?.lights?.rooms;
+  if (!rooms) return;
+  const now = Date.now();
+  for (const [key, p] of S.pending) {
+    const [kind, id] = key.split(':');
+    const targets = kind === 'group' ? rooms.filter((r) => r.id === id) : rooms.flatMap((r) => r.lights ?? []).filter((x) => x.id === id);
+    const agrees = targets.length && targets.every((t) => (p.on == null || t.on === p.on) && (p.bri == null || Math.abs((t.bri ?? 0) - p.bri) <= 3));
+    if (!p.inFlight && (agrees || now - p.at > 15_000)) { S.pending.delete(key); continue; }
+    for (const t of targets) Object.assign(t, p.on != null ? { on: p.on } : {}, p.bri != null ? { bri: p.bri, on: true } : {});
+  }
+}
 async function hueSet(kind, id, state) {
-  try { await api('POST', `/api/hue/${kind}/${id}`, state); refresh(); } catch (e) { toast(e.message); }
+  const key = `${kind}:${id}`;
+  const p = { ...state, at: Date.now(), inFlight: true };
+  S.pending.set(key, p);
+  applyPending(S.state);
+  if (!S.dragging && !$('#sheet').open) rerender();
+  try {
+    await api('POST', `/api/hue/${kind}/${id}`, state);
+    p.inFlight = false; p.at = Date.now();
+  } catch (e) {
+    if (S.pending.get(key) === p) S.pending.delete(key);
+    toast(e.message);
+  }
+  refresh();
+}
+
+// A room's light as a tile: tap to switch on/off, slide a finger along it to dim, or use – and +.
+// The fill behind the name shows the brightness.
+const BRI_STEP = 25; // about 10%
+function lightTile(r, { compact = false } = {}) {
+  const pctNow = r.on ? Math.max(1, bri2pct(r.bri)) : 0;
+  const busy = S.pending.get(`group:${r.id}`)?.inFlight;
+  let drag = null;
+  let dragged = false;
+  const pct = h('small', { class: 'lt-pct num' }, r.on ? `${pctNow}%` : 'Off');
+  const main = h('button', { class: 'lt-main', 'aria-pressed': String(r.on), 'aria-label': `${r.name}, ${r.on ? `on, ${pctNow}%` : 'off'}`, title: r.name,
+    onpointerdown: (e) => { drag = { x: e.clientX, id: e.pointerId }; dragged = false; },
+    onpointermove: (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!dragged && Math.abs(e.clientX - drag.x) < 10) return;
+      if (!dragged) { dragged = true; S.dragging = true; main.setPointerCapture?.(e.pointerId); tile.classList.add('on', 'dragging'); }
+      const box = main.getBoundingClientRect();
+      const v = Math.round(Math.min(1, Math.max(0.01, (e.clientX - box.left) / box.width)) * 100);
+      tile.style.setProperty('--lvl', `${v}%`);
+      pct.textContent = `${v}%`;
+      tile.dataset.v = v;
+    },
+    onpointerup: () => {
+      if (dragged) { S.dragging = false; tile.classList.remove('dragging'); hueSet('group', r.id, { bri: Math.round((Number(tile.dataset.v) / 100) * 254) }); }
+      drag = null;
+    },
+    onpointercancel: () => { if (dragged) { S.dragging = false; rerender(); } drag = null; dragged = false; },
+    onclick: (e) => { if (dragged) { e.preventDefault(); dragged = false; return; } hueSet('group', r.id, { on: !r.on }); },
+  }, icon('bulb'), h('span', { class: 'lt-text' }, h('b', {}, r.name), pct));
+  const step = (dir) => () => {
+    const from = r.on ? r.bri ?? 127 : 0;
+    const to = Math.max(1, Math.min(254, from + dir * BRI_STEP));
+    if (dir < 0 && r.on && from <= 1) return hueSet('group', r.id, { on: false });
+    hueSet('group', r.id, { bri: to });
+  };
+  // – and + only while the light is on (tap the tile to switch it on), so an off tile stays small
+  const tile = h('div', { class: `lt ${r.on ? 'on' : ''} ${busy ? 'busy' : ''} ${compact ? 'compact' : ''}` }, main,
+    r.on ? h('div', { class: 'lt-steps' },
+      h('button', { class: 'lt-step', 'aria-label': `Dim ${r.name}`, title: 'Dimmer', onclick: step(-1) }, icon('minus')),
+      h('button', { class: 'lt-step', 'aria-label': `Brighten ${r.name}`, title: 'Brighter', disabled: (r.bri ?? 0) >= 254, onclick: step(1) }, icon('plus'))) : null);
+  tile.style.setProperty('--lvl', `${pctNow}%`);
+  return tile;
 }
 
 // --- programme sheet --------------------------------------------------------------------------------------
@@ -651,6 +722,7 @@ function yaleSettingsCard() {
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function routineWhen(r) {
+  if (r.trigger.type === 'manual') return r.scene ? 'When you tap it · scene button' : 'When you tap Run now';
   if (r.trigger.type === 'once') {
     const d = new Date(r.trigger.at);
     return `Once · ${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
@@ -670,6 +742,7 @@ function routineAction(a) {
   return `${tv}: ${{ on: 'turn on', off: 'turn off', volume: `volume ${a.level}`, mute: 'mute', unmute: 'unmute', app: `open ${a.app}` }[what]}`;
 }
 function routineNext(r) {
+  if (r.trigger.type === 'manual') return '';
   if (!r.enabled) return r.trigger.type === 'once' && r.lastRun ? 'Done' : 'Off';
   if (!r.next) return '';
   const d = new Date(r.next);
@@ -694,17 +767,15 @@ function renderRoutines(main) {
   const sorted = [...list].sort((a, b) => (b.enabled - a.enabled) || ((a.next ?? Infinity) - (b.next ?? Infinity)));
   main.append(h('div', { class: 'routine-list' }, sorted.map((r) => h('div', { class: `card routine ${r.enabled ? '' : 'off'}` },
     h('div', { class: 'routine-head' },
-      h('div', { class: 'ico' }, icon(r.programme ? 'guide' : 'clock')),
+      h('div', { class: 'ico' }, icon(r.scene ? r.scene.icon : r.programme ? 'guide' : 'clock')),
       h('div', { class: 'tv-text' }, h('b', {}, r.name), h('small', {}, routineWhen(r))),
-      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `${r.name} on/off`,
+      r.trigger.type === 'manual' ? h('span') : h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': `${r.name} on/off`,
         onchange: (e) => routinesApi('POST', `/api/routines/${r.id}/${e.target.checked ? 'enable' : 'disable'}`) }), h('span'))),
     h('ul', { class: 'routine-actions' }, r.actions.map((a) => h('li', {}, routineAction(a)))),
     h('div', { class: 'routine-foot' },
       h('span', { class: 'muted' }, [routineNext(r), r.lastResult && r.lastResult !== 'ok' ? `Last run: ${r.lastResult}` : null].filter(Boolean).join(' · ')),
       h('div', { class: 'row' },
-        h('button', { class: 'btn ghost', onclick: () => (r.actions.some((a) => a.type === 'alarm')
-          ? pinSheet(S.state?.yale, { title: `Run "${r.name}"`, verb: 'Run', send: (pin) => api('POST', `/api/routines/${r.id}/run`, { pin }), done: `Ran "${r.name}"` })
-          : routinesApi('POST', `/api/routines/${r.id}/run`, null, `Ran "${r.name}"`)) }, icon('play'), 'Run now'),
+        h('button', { class: 'btn ghost', 'data-routine': r.id, onclick: (e) => runRoutine(r, e.currentTarget) }, icon('play'), 'Run now'),
         h('button', { class: 'btn ghost', onclick: () => routineEditor(r) }, 'Edit'),
         h('button', { class: 'btn ghost remove', onclick: async () => {
           if (await confirmSheet(`Delete "${r.name}"?`, 'It stops running. Nothing else changes.', 'Delete')) routinesApi('DELETE', `/api/routines/${r.id}`, null, 'Routine deleted');
@@ -714,6 +785,39 @@ function renderRoutines(main) {
 // datetime-local value (local time) <-> ms
 const toLocalInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000); return d.toISOString().slice(0, 16); };
 const fromLocalInput = (v) => new Date(v).getTime();
+
+const SCENE_ICONS = [['play', 'Play'], ['home', 'Home'], ['door', 'Going out'], ['moon', 'Night'], ['sun', 'Morning'], ['tv', 'TV'], ['bulb', 'Lights'], ['flame', 'Heating'], ['shield', 'Alarm'], ['power', 'All off']];
+
+// run a routine now; routines that arm the alarm ask for the PIN first
+function runRoutine(r, btn) {
+  if (r.actions.some((a) => a.type === 'alarm')) {
+    return pinSheet(S.state?.yale, { title: `Run "${r.name}"`, verb: 'Run', send: (pin) => api('POST', `/api/routines/${r.id}/run`, { pin }), done: `Ran "${r.name}"` });
+  }
+  // remembered by id so the busy look survives the 6-second re-render
+  S.runningScenes = S.runningScenes ?? new Set();
+  if (S.runningScenes.has(r.id)) return;
+  S.runningScenes.add(r.id);
+  btn?.classList.add('busy'); btn?.setAttribute('aria-busy', 'true');
+  return api('POST', `/api/routines/${r.id}/run`)
+    .then((res) => {
+      const failed = (res?.results ?? []).filter((x) => !x.ok);
+      toast(failed.length ? `"${r.name}": ${failed.length} step${failed.length > 1 ? 's' : ''} didn't work — ${failed[0].error}` : `${r.name} — done`);
+    })
+    .catch((e) => toast(e.message))
+    .finally(() => { S.runningScenes.delete(r.id); document.querySelectorAll(`[data-routine="${r.id}"]`).forEach((el) => { el.classList.remove('busy'); el.removeAttribute('aria-busy'); }); refresh(); });
+}
+
+// one-tap scene buttons (routines marked as scenes), for Home and the hallway screen
+function sceneStrip() {
+  const scenes = (S.state?.routines ?? []).filter((r) => r.scene);
+  if (!scenes.length) return null;
+  return h('div', { class: 'scenes', role: 'group', 'aria-label': 'Scenes' }, scenes.map((r) => {
+    const btn = h('button', { class: 'scene', 'data-routine': r.id, onclick: () => runRoutine(r, btn) },
+      h('span', { class: 'scene-ico' }, icon(r.scene.icon)), h('span', { class: 'scene-name' }, r.name));
+    if (S.runningScenes?.has(r.id)) { btn.classList.add('busy'); btn.setAttribute('aria-busy', 'true'); }
+    return btn;
+  }));
+}
 
 function routineEditor(r = null, preset = null) {
   const draft = r ? JSON.parse(JSON.stringify(r)) : preset ?? { name: '', enabled: true, trigger: { type: 'daily', time: '20:00', days: [0, 1, 2, 3, 4, 5, 6] }, actions: [] };
@@ -747,12 +851,26 @@ function routineEditor(r = null, preset = null) {
   const once = h('div', { class: 'fields' }, h('label', { class: 'field' }, 'Date and time', at));
   let kind = draft.trigger.type;
   const showKind = () => { daily.hidden = kind !== 'daily'; once.hidden = kind !== 'once'; };
-  const kindSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'When' }, [['daily', 'Every week'], ['once', 'Once']].map(([k, label]) =>
+  const kindSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'When' }, [['daily', 'Every week'], ['once', 'Once'], ['manual', 'When I tap it']].map(([k, label]) =>
     h('button', { type: 'button', 'aria-pressed': String(kind === k), onclick: (e) => {
       kind = k; showKind();
+      if (k === 'manual' && !sceneBox.checked) { sceneBox.checked = true; syncScene(); }
       e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));
     } }, label)));
   showKind();
+
+  // scene: a one-tap button on Home and the hallway screen
+  let sceneIcon = draft.scene?.icon ?? 'play';
+  const sceneBox = h('input', { type: 'checkbox', checked: Boolean(draft.scene), 'aria-label': 'Show as a scene button' });
+  const iconPick = h('div', { class: 'chips day-chips scene-icons', role: 'group', 'aria-label': 'Scene icon' }, SCENE_ICONS.map(([k, label]) =>
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(sceneIcon === k), 'aria-label': label, title: label, onclick: (e) => {
+      sceneIcon = k;
+      e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));
+    } }, icon(k))));
+  const syncScene = () => { iconPick.hidden = !sceneBox.checked; };
+  sceneBox.addEventListener('change', syncScene); syncScene();
+  const sceneField = h('div', { class: 'field' },
+    h('div', { class: 'toggle-row' }, h('span', {}, 'Scene button on Home and the hallway screen'), h('label', { class: 'switch' }, sceneBox, h('span'))), iconPick);
 
   // actions
   const rows = h('div', { class: 'routine-rows' });
@@ -840,7 +958,8 @@ function routineEditor(r = null, preset = null) {
     if (kind === 'daily' && !days.size) { msg.textContent = 'Pick at least one day'; return; }
     const body = {
       id: r?.id, name: name.value, enabled: draft.enabled !== false, programme: draft.programme ?? null,
-      trigger: kind === 'daily' ? { type: 'daily', time: time.value, days: [...days] } : { type: 'once', at: fromLocalInput(at.value) },
+      trigger: kind === 'daily' ? { type: 'daily', time: time.value, days: [...days] } : kind === 'manual' ? { type: 'manual' } : { type: 'once', at: fromLocalInput(at.value) },
+      scene: sceneBox.checked ? { icon: sceneIcon } : null,
       actions: readers.map((f) => f()),
     };
     save.disabled = true;
@@ -853,7 +972,7 @@ function routineEditor(r = null, preset = null) {
     h('h2', {}, r ? 'Edit routine' : draft.programme ? 'Set up for this show' : 'New routine'),
     draft.programme ? h('p', { class: 'muted' }, `Runs a minute before ${draft.programme.title} starts.`) : null,
     h('label', { class: 'field' }, 'Name', name),
-    h('div', { class: 'field' }, 'When', kindSeg), daily, once,
+    h('div', { class: 'field' }, 'When', kindSeg), daily, once, sceneField,
     h('div', { class: 'field' }, 'Do this'), rows,
     h('div', { class: 'row add-actions' },
       h('button', { type: 'button', class: 'btn', onclick: () => addRow({ type: 'lights', on: true }) }, icon('bulb'), 'Lights'),
@@ -933,8 +1052,7 @@ function renderWall(main) {
       s.yale?.signedIn ? alarmCard(s.yale) : null,
       t ? thermostatCard(t, s.hive.boost) : null,
       rooms.length ? h('div', { class: 'card wall-lights' }, h('h3', {}, 'Lights'),
-        h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) },
-          icon('bulb'), h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off'))))) : null,
+        h('div', { class: 'light-tiles' }, rooms.map((r) => lightTile(r)))) : null,
       h('div', { class: 'card wall-tv' }, h('h3', {}, 'On TV'),
         (s.tv ?? []).map((b) => { const n = nowLine(b); return h('div', { class: 'wall-tv-row' },
           h('span', { class: `dot ${!b.online ? 'bad' : b.standby ? '' : 'live'}` }),
@@ -1203,7 +1321,8 @@ function renderHallway(main) {
   const y = s.yale;
   const camCount = ringCams.length + (s.cameras ?? []).length;
 
-  main.replaceChildren(h('div', { class: 'wall hall', onclick: () => keepAwake(true) },
+  const scenes = sceneStrip();
+  main.replaceChildren(h('div', { class: `wall hall ${scenes ? 'with-scenes' : ''}`, onclick: () => keepAwake(true) },
     h('header', { class: 'hall-top' },
       h('div', { class: 'wall-clock' }, wallClock()),
       hallWeather(s.weather),
@@ -1215,6 +1334,7 @@ function renderHallway(main) {
           document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {});
         } }, icon('expand')),
         h('a', { class: 'icon-btn', href: '#/home', 'aria-label': 'Leave the hallway screen', title: 'Leave the hallway screen' }, icon('x')))),
+    scenes,
     // one screen, no scrolling (on a tablet or bigger): alarm and heating | trains | lights and cameras
     h('div', { class: 'hall-grid' },
       y?.signedIn || t ? h('section', { class: 'hall-col', 'aria-label': 'Alarm and heating' },
@@ -1229,8 +1349,7 @@ function renderHallway(main) {
         rooms.length ? h('div', { class: 'card wall-lights hall-lights' },
           h('div', { class: 'hall-head' }, h('h3', {}, 'Lights'),
             lit.length ? h('button', { class: 'btn', onclick: () => lit.forEach((r) => hueSet('group', r.id, { on: false })) }, icon('power'), 'All off') : null),
-          h('div', { class: 'wall-rooms' }, rooms.map((r) => h('button', { class: `wall-room ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), title: r.name, onclick: () => hueSet('group', r.id, { on: !r.on }) },
-            icon('bulb'), h('span', { class: 'room-text' }, h('b', {}, r.name), h('small', {}, r.on ? `${bri2pct(r.bri)}%` : 'Off')))))) : null))));
+          h('div', { class: 'light-tiles' }, rooms.map((r) => lightTile(r, { compact: true })))) : null))));
   keepAwake(true);
   requestAnimationFrame(fitTrains);
 }
@@ -1350,7 +1469,7 @@ async function renderHome(main) {
   main.replaceChildren(
     pageHead(greeting, new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }), liveChip()),
     h('div', { class: 'bento' },
-      h('section', { class: 'b-status', 'aria-label': 'At a glance' }, statusStrip),
+      h('section', { class: 'b-status', 'aria-label': 'At a glance' }, sceneStrip(), statusStrip),
       h('section', { class: 'b-tv' },
         h('div', { class: 'section-title' }, h('h2', {}, 'Watching now'), h('a', { href: '#/remote' }, 'Remote →')),
         h('div', { class: 'heroes' }, (s?.tv ?? []).map(heroCard)), otherTvs),
@@ -1362,8 +1481,7 @@ async function renderHome(main) {
         h('div', { class: 'b-lights' },
           h('div', { class: 'section-title' }, h('h2', {}, 'Lights'), h('a', { href: '#/lights' }, 'All lights →')),
           s?.lights?.paired && s.lights.online
-            ? h('div', { class: 'quick-lights' }, s.lights.rooms.filter((r) => r.type === 'Room').map((r) =>
-              h('button', { class: `light-chip ${r.on ? 'on' : ''}`, 'aria-pressed': String(r.on), onclick: () => hueSet('group', r.id, { on: !r.on }) }, icon('bulb'), r.name)))
+            ? h('div', { class: 'light-tiles' }, s.lights.rooms.filter((r) => r.type === 'Room').map((r) => lightTile(r)))
             : h('div', { class: 'card muted' }, s?.lights?.paired ? 'Hue bridge not answering.' : 'Pair the Hue bridge in Settings to control lights here.')),
         cams.length ? h('div', { class: 'b-cams' }, cams) : null)),
   );
@@ -2316,6 +2434,7 @@ let loadedVersion = null;
 async function refresh() {
   try {
     S.state = await api('GET', '/api/state');
+    applyPending(S.state);
     S.updatedAt = Date.now();
     // A new version was deployed since this page loaded: reload to pick it up (unless a dialog is open)
     if (S.state.version) {

@@ -92,7 +92,14 @@ function cleanTrigger(t) {
     if (!Number.isFinite(at) || at < Date.now() - 60_000) throw new Error('That time has already passed');
     return { type: 'once', at };
   }
+  if (t?.type === 'manual') return { type: 'manual' }; // a scene: runs only when someone taps it
   throw new Error('Choose when the routine runs');
+}
+
+const SCENE_ICONS = new Set(['home', 'door', 'moon', 'sun', 'tv', 'bulb', 'flame', 'shield', 'power', 'play']);
+function cleanScene(sc) {
+  if (!sc) return null;
+  return { icon: SCENE_ICONS.has(sc.icon) ? sc.icon : 'play' };
 }
 
 function clean(body, prev = {}) {
@@ -106,6 +113,7 @@ function clean(body, prev = {}) {
     enabled: body.enabled !== false,
     trigger: cleanTrigger(body.trigger),
     actions,
+    scene: cleanScene(body.scene),
     programme: body.programme ? { sid: String(body.programme.sid), title: String(body.programme.title ?? '').slice(0, 80), st: Number(body.programme.st) || null } : prev.programme ?? null,
     lastRun: prev.lastRun ?? null,
     lastResult: prev.lastResult ?? null,
@@ -194,7 +202,7 @@ export async function run(id, why = 'manual', pin) {
 }
 
 export function due(r, now = Date.now()) {
-  if (!r.enabled) return false;
+  if (!r.enabled || r.trigger.type === 'manual') return false;
   if (r.trigger.type === 'once') return now >= r.trigger.at && now - r.trigger.at < CATCH_UP_MS && !(r.lastRun >= r.trigger.at);
   const uk = ukNow(new Date(now));
   if (!r.trigger.days.includes(uk.weekday)) return false;
@@ -222,7 +230,7 @@ export function start() {
 
 /** For the UI: next run time (ms) of a routine, or null */
 export function nextRun(r, now = Date.now()) {
-  if (!r.enabled) return null;
+  if (!r.enabled || r.trigger.type === 'manual') return null;
   if (r.trigger.type === 'once') return r.trigger.at > now ? r.trigger.at : null;
   for (let d = 0; d < 8; d++) {
     const probe = now + d * 86_400_000;

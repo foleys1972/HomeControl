@@ -955,3 +955,81 @@ body.wall-mode .main { max-width: none; padding: max(20px, env(safe-area-inset-t
 .settings-unlocked { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .settings-unlocked > svg { width: 20px; height: 20px; color: var(--ok); }
 .settings-unlocked .desc { margin: 0; }
+
+/* ---------- scenes: one-tap routines on Home and the hallway screen ---------- */
+.scenes { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 4px; margin: -2px -2px 0; }
+.scenes::-webkit-scrollbar { display: none; }
+.scene { flex: none; display: inline-flex; align-items: center; gap: 10px; min-height: 56px; padding: 7px 18px 7px 7px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 650; font-size: .95rem; box-shadow: var(--card-shadow);
+  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); transition: background .15s, border-color .15s, transform .08s; -webkit-tap-highlight-color: transparent; }
+.scene:hover { border-color: var(--line-2); background: var(--surface-2); }
+.scene:active { transform: scale(.96); }
+.scene-ico { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-grad); color: var(--on-accent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent); }
+.scene-ico svg { width: 20px; height: 20px; }
+.scene.busy { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.scene.busy .scene-ico { animation: scene-run 1s ease-in-out infinite; }
+@keyframes scene-run { 50% { transform: scale(.86); opacity: .7; } }
+.b-status { gap: 14px; }
+.scene-icons .chip { padding: 8px 10px; min-height: 44px; min-width: 44px; justify-content: center; }
+.scene-icons .chip svg { width: 20px; height: 20px; }
+.btn.busy { opacity: .6; pointer-events: none; }
+/* hallway: scenes sit between the top bar and the columns */
+@media (min-width: 900px) and (min-height: 560px) {
+  .wall.hall.with-scenes { grid-template-rows: auto auto minmax(0, 1fr); }
+}
+.hall .scenes .scene { min-height: 60px; font-size: 1rem; }
+
+/* ---------- light tiles: tap to switch, slide to dim, – / + to step ---------- */
+.light-tiles { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.lt { --lvl: 0%; position: relative; isolation: isolate; overflow: hidden; display: flex; flex-wrap: wrap; align-items: center;
+  border-radius: 18px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--card-shadow); transition: border-color .2s, transform .08s; }
+/* the fill is the brightness */
+.lt-main::before { content: ""; position: absolute; inset: 0 auto 0 0; z-index: -1; width: var(--lvl);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--lamp) 26%, transparent), color-mix(in srgb, var(--lamp) 46%, transparent));
+  border-right: 2px solid color-mix(in srgb, var(--lamp) 80%, transparent); transition: width .25s cubic-bezier(.2, .8, .3, 1); }
+.lt:not(.on) .lt-main::before { border-right-color: transparent; }
+.lt.dragging .lt-main::before { transition: none; }
+.lt.on { border-color: color-mix(in srgb, var(--lamp) 55%, transparent); }
+.lt:active:not(.dragging) { transform: scale(.985); }
+/* the name keeps at least ~170px: on a narrow tile the – / + buttons drop to a second row instead of squeezing it */
+.lt-main { flex: 1 1 170px; position: relative; isolation: isolate; align-self: stretch; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 64px; padding: 10px 6px 10px 12px; border: 0; background: none; color: var(--text);
+  text-align: left; cursor: pointer; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.lt-main > svg { flex: none; width: 36px; height: 36px; padding: 8px; border-radius: 12px; background: var(--surface-3); color: var(--muted); transition: background .2s, color .2s; }
+.lt.on .lt-main > svg { background: var(--lamp); color: var(--on-lamp); }
+.lt-text { display: grid; min-width: 0; line-height: 1.25; }
+.lt-text b { font-size: .95rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-pct { font-size: .85rem; color: var(--text-2); font-weight: 600; }
+.lt:not(.on) .lt-pct { color: var(--muted); font-weight: 500; }
+.lt-steps { display: flex; gap: 4px; padding: 6px; margin-left: auto; }
+.lt-step { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; cursor: pointer; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-solid) 55%, transparent); color: var(--text); transition: background .15s, transform .06s; }
+.lt-step:hover { background: var(--surface-3); }
+.lt-step:active { transform: scale(.92); }
+.lt-step:disabled { opacity: .35; cursor: default; }
+.lt-step svg { width: 18px; height: 18px; }
+.lt.busy .lt-main > svg { animation: lt-busy .9s ease-in-out infinite; }
+@keyframes lt-busy { 50% { opacity: .55; } }
+.lt.compact .lt-main { min-height: 54px; padding-block: 6px; }
+.lt.compact .lt-main > svg { width: 32px; height: 32px; padding: 7px; }
+.hall .hall-lights .light-tiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.b-lights .light-tiles { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+@media (prefers-reduced-motion: reduce) { .scene.busy .scene-ico, .lt.busy .lt-main > svg { animation: none; } }
+/* hallway with scenes: the scene row costs ~70px, so the heating dial gives it back (tablet, one screen) */
+@media (min-width: 900px) and (min-height: 560px) {
+  .wall.hall.with-scenes { gap: 14px; }
+  .wall.hall.with-scenes .scenes .scene { min-height: 52px; }
+  .wall.hall.with-scenes .scene-ico { width: 38px; height: 38px; }
+  .wall.hall.with-scenes .dial { width: min(100%, 190px, 19dvh); }
+  .wall.hall.with-scenes .dial-centre b { font-size: clamp(2rem, 4.6dvh, 2.6rem); }
+  .wall.hall.with-scenes .dial-centre span { font-size: .85rem; }
+  .wall.hall.with-scenes .dial-btn { width: 44px; height: 44px; }
+  .wall.hall.with-scenes .dial-btn.minus { left: calc(50% - 50px); }
+  .wall.hall.with-scenes .dial-btn.plus { right: calc(50% - 50px); }
+}
+/* hallway: keep – / + on the same row (a second row would push the lights card off the screen), so tighten the tile instead */
+.lt.compact .lt-main { flex-basis: 100px; gap: 8px; padding: 6px 2px 6px 10px; }
+.lt.compact .lt-main > svg { width: 28px; height: 28px; padding: 6px; border-radius: 9px; }
+.lt.compact .lt-text b { font-size: .9rem; }
+.lt.compact .lt-steps { gap: 2px; padding: 4px; }
+.hall .hall-lights { padding: 14px; }
